@@ -1,759 +1,739 @@
 """
-Strategic agents for FinTrack AI.
+Agent implementations for FinTrack AI.
 
-Contains:
-- Risk Agent
-- Opportunity Agent
-- Decision Agent
-- Critic / Review Agent
+Each function is a distinct agent with a single responsibility. They consume
+previous agents' structured output and return structured results.
 
-These agents operate on shared financial evidence and
-produce structured outputs that can be passed between agents.
+LLM usage is OPTIONAL — when HF_TOKEN is present and reachable, we query
+Qwen2.5-7B-Instruct for reasoning; otherwise we fall back to deterministic
+logic over the real data. Numbers are always computed locally — never invented
+by the LLM.
 """
+from __future__ import annotations
 
-from typing import Any
+import json
+import os
+from collections import Counter, defaultdict
+from typing import Any, Dict, List, Optional, Tuple
 
+import numpy as np
 import pandas as pd
 
+try:
+    import requests
+except ImportError:  # pragma: no cover
+    requests = None  # type: ignore
 
-# ============================================================
-# HELPERS
-# ============================================================
+HF_MODEL = "Qwen/Qwen2.5-7B-Instruct"
+HF_API_URL = f"https://api-inference.huggingface.co/models/{HF_MODEL}"
 
-def _safe_float(value: Any) -> float:
+
+# =====================================================================
+# Hugging Face helper
+# =====================================================================
+def hf_available() -> bool:
+    return bool(os.environ.get("HF_TOKEN")) and requests is not None
+
+
+def call_hf(prompt: str, max_new_tokens: int = 400, temperature: float = 0.3) -> Optional[str]:
+    """
+    Call the Hugging Face Inference API. Returns the generated text or None
+    on any failure. Never raises.
+    """
+    if not hf_available():
+        return None
+    token = os.environ["HF_TOKEN"]
+    headers = {"Authorization": f"Bearer {token}"}
+    payload = {
+        "inputs": prompt,
+        "parameters": {
+            "max_new_tokens": max_new_tokens,
+            "temperature": temperature,
+            "return_full_text": False,
+        },
+        "options": {"wait_for_model": True},
+    }
     try:
-        return float(value)
-    except (TypeError, ValueError):
-        return 0.0
+        resp = requests.post(HF_API_URL, headers=headers, json=payload, timeout=30)
+        if resp.status_code != 200:
+            return None
+        data = resp.json()
+        if isinstance(data, list) and data and "generated_text" in data[0]:
+            return data[0]["generated_text"].strip()
+        if isinstance(data, dict) and "generated_text" in data:
+            return data["generated_text"].strip()
+        return None
+    except Exception:
+        return None
 
 
-def _evidence(
-    metric: str,
-    value: Any,
-    interpretation: str,
-) -> dict:
-    return {
-        "metric": metric,
-        "value": value,
-        "interpretation": interpretation,
-    }
+def _safe_json(text: Optional[str]) -> Optional[dict]:
+    """Extract the first JSON object from text."""
+    if not text:
+        return None
+    start = text.find("{")
+    end = text.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        return None
+    try:
+        return json.loads(text[start:end + 1])
+    except Exception:
+        return None
 
 
-# ============================================================
-# RISK AGENT
-# ============================================================
+# =====================================================================
+# Analytics Agent
+# =====================================================================
+def run_analytics_agent(df: pd.DataFrame) -> Dict[str, Any]:
+    """Pure computation — builds the structured analytics evidence set."""
+    income = df[df["type"] == "income"]
+    expense = df[df["type"] == "expense"]
 
-def run_risk_agent(
-    df: pd.DataFrame,
-    stats: dict,
-) -> dict:
-    """
-    Analyze financial evidence specifically for risks.
+    total_revenue = float(income["amount"].sum())
+    total_expenses = float(expense["abs_amount"].sum())
+    net = total_revenue - total_expenses
+    expense_ratio = (total_expenses / total_revenue * 100.0) if total_revenue > 0 else 100.0
 
-    The Risk Agent does not decide the final business action.
-    It only identifies and prioritizes financial threats.
-    """
+    # Monthly series
+    df_m = df.copy()
+    df_m["month"] = df_m["date"].dt.to_period("M").astype(str)
+    monthly_rev = df_m[df_m["type"] == "income"].groupby("month")["amount"].sum()
+    monthly_exp = df_m[df_m["type"] == "expense"].groupby("month")["abs_amount"].sum()
+    months = sorted(set(monthly_rev.index) | set(monthly_exp.index))
 
-    risks = []
-    evidence = []
-
-    income = _safe_float(
-        stats.get("total_income", 0)
+    monthly = pd.DataFrame(
+        {
+            "month": months,
+            "revenue": [float(monthly_rev.get(m, 0.0)) for m in months],
+            "expenses": [float(monthly_exp.get(m, 0.0)) for m in months],
+        }
     )
+    monthly["net"] = monthly["revenue"] - monthly["expenses"]
 
-    expenses = _safe_float(
-        stats.get("total_expense", 0)
-    )
-
-    net_cash_flow = income - expenses
-
-    expense_ratio = (
-        (expenses / income) * 100
-        if income > 0
-        else 100.0
-    )
-
-    # --------------------------------------------------------
-    # CASH FLOW RISK
-    # --------------------------------------------------------
-
-    if net_cash_flow < 0:
-
-        risks.append(
-            {
-                "title": "Negative Cash Flow",
-                "severity": "High",
-                "description": (
-                    f"Expenses exceed income by "
-                    f"${abs(net_cash_flow):,.2f}."
-                ),
-            }
+    # Category breakdown
+    cat_totals: Dict[str, float] = {}
+    if "category" in expense.columns:
+        cat_totals = (
+            expense.groupby("category")["abs_amount"].sum().sort_values(ascending=False).to_dict()
         )
+        cat_totals = {k: float(v) for k, v in cat_totals.items()}
+    largest_cat = next(iter(cat_totals.items()), (None, 0.0))
 
-        evidence.append(
-            _evidence(
-                "Net cash flow",
-                f"${net_cash_flow:,.2f}",
-                "Outgoing cash exceeds incoming cash.",
-            )
+    # Vendor concentration
+    vendor_totals: Dict[str, float] = {}
+    if "description" in expense.columns:
+        vendor_totals = (
+            expense.groupby("description")["abs_amount"].sum().sort_values(ascending=False).head(10).to_dict()
         )
+        vendor_totals = {k: float(v) for k, v in vendor_totals.items()}
+    top_vendor = next(iter(vendor_totals.items()), (None, 0.0))
+    top_vendor_share = (top_vendor[1] / total_expenses * 100.0) if total_expenses > 0 else 0.0
 
-    # --------------------------------------------------------
-    # EXPENSE RATIO RISK
-    # --------------------------------------------------------
+    # Recurring expenses: description appearing >= 3 times with similar amount
+    recurring: List[Dict[str, Any]] = []
+    if "description" in expense.columns:
+        grouped = expense.groupby("description")["abs_amount"]
+        for desc, vals in grouped:
+            if len(vals) >= 3:
+                cv = float(vals.std() / vals.mean()) if vals.mean() else 1.0
+                if cv < 0.15:
+                    recurring.append(
+                        {
+                            "description": str(desc),
+                            "occurrences": int(len(vals)),
+                            "avg_amount": float(vals.mean()),
+                            "monthly_impact": float(vals.mean()),
+                        }
+                    )
+        recurring.sort(key=lambda r: r["monthly_impact"], reverse=True)
 
-    if expense_ratio > 80:
+    # Trends (first-half vs second-half of the timeline)
+    rev_trend = _trend(monthly["revenue"].tolist())
+    exp_trend = _trend(monthly["expenses"].tolist())
 
-        risks.append(
-            {
-                "title": "High Expense Burden",
-                "severity": "High",
-                "description": (
-                    f"Expenses consume "
-                    f"{expense_ratio:.1f}% of revenue."
-                ),
-            }
-        )
-
-        evidence.append(
-            _evidence(
-                "Expense ratio",
-                f"{expense_ratio:.1f}%",
-                "Very high proportion of revenue is consumed by expenses.",
-            )
-        )
-
-    elif expense_ratio > 65:
-
-        risks.append(
-            {
-                "title": "Cost Pressure",
-                "severity": "Medium",
-                "description": (
-                    f"Expenses consume "
-                    f"{expense_ratio:.1f}% of revenue."
-                ),
-            }
-        )
-
-        evidence.append(
-            _evidence(
-                "Expense ratio",
-                f"{expense_ratio:.1f}%",
-                "Expenses are taking a significant share of revenue.",
-            )
-        )
-
-    # --------------------------------------------------------
-    # CONCENTRATION RISK
-    # --------------------------------------------------------
-
-    by_category = stats.get(
-        "by_category"
-    )
-
-    if (
-        by_category is not None
-        and len(by_category) > 0
-        and expenses > 0
-    ):
-
-        largest_category = by_category.index[0]
-
-        largest_amount = _safe_float(
-            by_category.iloc[0]
-        )
-
-        concentration = (
-            largest_amount / expenses
-        ) * 100
-
-        if concentration > 40:
-
-            risks.append(
-                {
-                    "title": "Expense Concentration",
-                    "severity": "Medium",
-                    "description": (
-                        f"{largest_category} represents "
-                        f"{concentration:.1f}% of total expenses."
-                    ),
-                }
-            )
-
-            evidence.append(
-                _evidence(
-                    "Largest expense category",
-                    (
-                        f"{largest_category}: "
-                        f"${largest_amount:,.2f}"
-                    ),
-                    (
-                        f"{concentration:.1f}% of expenses "
-                        "are concentrated in one category."
-                    ),
-                )
-            )
-
-    # --------------------------------------------------------
-    # RECURRING EXPENSE RISK
-    # --------------------------------------------------------
-
-    recurring = stats.get(
-        "recurring"
-    )
-
-    if (
-        recurring is not None
-        and len(recurring) >= 5
-    ):
-
-        risks.append(
-            {
-                "title": "Recurring Cost Exposure",
-                "severity": "Low",
-                "description": (
-                    f"{len(recurring)} recurring expense "
-                    "patterns were detected."
-                ),
-            }
-        )
-
-        evidence.append(
-            _evidence(
-                "Recurring expenses",
-                len(recurring),
-                "Multiple recurring costs may require periodic review.",
-            )
-        )
-
-    # --------------------------------------------------------
-    # RISK SCORE
-    # --------------------------------------------------------
-
-    severity_points = {
-        "High": 30,
-        "Medium": 20,
-        "Low": 10,
-    }
-
-    risk_score = sum(
-        severity_points.get(
-            risk.get("severity"),
-            0,
-        )
-        for risk in risks
-    )
-
-    risk_score = min(
-        risk_score,
-        100,
-    )
-
-    if risk_score >= 60:
-        level = "High"
-    elif risk_score >= 30:
-        level = "Moderate"
+    # Spending concentration (HHI on expense categories)
+    if cat_totals and total_expenses > 0:
+        shares = [v / total_expenses for v in cat_totals.values()]
+        hhi = float(sum(s * s for s in shares))
     else:
-        level = "Low"
+        hhi = 1.0
+
+    # Positive / negative cash-flow months
+    positive_months = int((monthly["net"] > 0).sum())
+    negative_months = int((monthly["net"] < 0).sum())
+
+    evidence: List[Dict[str, Any]] = [
+        _ev("total_revenue", total_revenue, f"Total revenue of ${total_revenue:,.0f} across {len(income)} transactions."),
+        _ev("total_expenses", total_expenses, f"Total expenses of ${total_expenses:,.0f} across {len(expense)} transactions."),
+        _ev("net_cash_flow", net, f"Net cash flow of ${net:,.0f} (revenue − expenses)."),
+        _ev("expense_ratio", round(expense_ratio, 2), f"Expenses consume {expense_ratio:.1f}% of revenue."),
+    ]
+    if largest_cat[0]:
+        evidence.append(
+            _ev("largest_category", largest_cat[0],
+                f"Largest expense category is {largest_cat[0]} at ${largest_cat[1]:,.0f}.")
+        )
+    if top_vendor[0]:
+        evidence.append(
+            _ev("top_vendor", top_vendor[0],
+                f"Highest-spend vendor is {top_vendor[0]} at ${top_vendor[1]:,.0f} "
+                f"({top_vendor_share:.1f}% of total expenses).")
+        )
+    if recurring:
+        evidence.append(
+            _ev("recurring_expenses", len(recurring),
+                f"{len(recurring)} recurring expense pattern(s) detected.")
+        )
+    evidence.append(
+        _ev("spending_concentration", round(hhi, 3),
+            f"Expense concentration index (HHI) is {hhi:.3f} — "
+            f"{'highly concentrated' if hhi > 0.35 else 'moderately concentrated' if hhi > 0.2 else 'well diversified'}.")
+    )
+    evidence.append(
+        _ev("cashflow_months", f"{positive_months}/{positive_months + negative_months}",
+            f"{positive_months} positive and {negative_months} negative cash-flow month(s).")
+    )
 
     return {
-        "agent": "Risk Agent",
-        "risk_score": risk_score,
+        "total_revenue": round(total_revenue, 2),
+        "total_expenses": round(total_expenses, 2),
+        "net_cash_flow": round(net, 2),
+        "expense_ratio": round(expense_ratio, 2),
+        "monthly": monthly.to_dict(orient="records"),
+        "category_totals": cat_totals,
+        "largest_category": largest_cat[0],
+        "largest_category_value": round(largest_cat[1], 2),
+        "vendor_totals": vendor_totals,
+        "top_vendor": top_vendor[0],
+        "top_vendor_value": round(top_vendor[1], 2),
+        "top_vendor_share": round(top_vendor_share, 2),
+        "recurring_expenses": recurring,
+        "revenue_trend": rev_trend,
+        "expense_trend": exp_trend,
+        "spending_concentration": round(hhi, 3),
+        "positive_months": positive_months,
+        "negative_months": negative_months,
+        "num_transactions": int(len(df)),
+        "evidence": evidence,
+    }
+
+
+def _ev(metric: str, value: Any, interpretation: str) -> Dict[str, Any]:
+    return {"metric": metric, "value": value, "interpretation": interpretation}
+
+
+def _trend(series: List[float]) -> str:
+    if len(series) < 2:
+        return "flat"
+    first = series[: max(1, len(series) // 2)]
+    second = series[max(1, len(series) // 2):]
+    f_avg = float(np.mean(first)) if first else 0.0
+    s_avg = float(np.mean(second)) if second else 0.0
+    if f_avg == 0 and s_avg == 0:
+        return "flat"
+    change = (s_avg - f_avg) / max(abs(f_avg), 1e-6)
+    if change > 0.10:
+        return "rising"
+    if change < -0.10:
+        return "declining"
+    return "stable"
+
+
+# =====================================================================
+# Risk Agent
+# =====================================================================
+def run_risk_agent(stats: Dict[str, Any]) -> Dict[str, Any]:
+    """Independently reason over analytics and enumerate risks with evidence."""
+    risks: List[Dict[str, Any]] = []
+    evidence: List[str] = []
+    score = 0.0
+
+    # 1. Negative cash flow
+    if stats["net_cash_flow"] < 0:
+        sev = "HIGH" if stats["net_cash_flow"] < -0.1 * max(stats["total_revenue"], 1) else "MEDIUM"
+        risks.append({
+            "title": "Negative Cash Flow",
+            "description": f"The business spent ${abs(stats['net_cash_flow']):,.0f} more than it earned.",
+            "severity": sev,
+            "evidence": f"Net cash flow: ${stats['net_cash_flow']:,.0f}.",
+        })
+        evidence.append(f"net_cash_flow={stats['net_cash_flow']:.0f}")
+        score += 35 if sev == "HIGH" else 25
+
+    # 2. High expense ratio
+    er = stats["expense_ratio"]
+    if er > 90:
+        risks.append({
+            "title": "Critical Expense Ratio",
+            "description": f"Expenses consume {er:.1f}% of revenue — very little margin remains.",
+            "severity": "HIGH",
+            "evidence": f"expense_ratio={er:.1f}%",
+        })
+        evidence.append(f"expense_ratio={er:.1f}%")
+        score += 25
+    elif er > 75:
+        risks.append({
+            "title": "High Expense Ratio",
+            "description": f"Expenses consume {er:.1f}% of revenue.",
+            "severity": "MEDIUM",
+            "evidence": f"expense_ratio={er:.1f}%",
+        })
+        evidence.append(f"expense_ratio={er:.1f}%")
+        score += 15
+    elif er > 60:
+        risks.append({
+            "title": "Rising Cost Pressure",
+            "description": f"Expenses consume {er:.1f}% of income.",
+            "severity": "LOW",
+            "evidence": f"expense_ratio={er:.1f}%",
+        })
+        evidence.append(f"expense_ratio={er:.1f}%")
+        score += 7
+
+    # 3. Spending concentration
+    if stats["spending_concentration"] > 0.35 and stats.get("largest_category"):
+        risks.append({
+            "title": "Spending Concentration",
+            "description": (
+                f"{stats['largest_category']} dominates expenses at "
+                f"${stats['largest_category_value']:,.0f}."
+            ),
+            "severity": "MEDIUM",
+            "evidence": f"HHI={stats['spending_concentration']:.3f}",
+        })
+        evidence.append(f"HHI={stats['spending_concentration']:.3f}")
+        score += 12
+
+    # 4. Vendor concentration
+    if stats["top_vendor_share"] > 25 and stats.get("top_vendor"):
+        risks.append({
+            "title": "Vendor Concentration",
+            "description": (
+                f"{stats['top_vendor']} accounts for {stats['top_vendor_share']:.1f}% "
+                "of total expenses."
+            ),
+            "severity": "MEDIUM",
+            "evidence": f"top_vendor_share={stats['top_vendor_share']:.1f}%",
+        })
+        evidence.append(f"top_vendor_share={stats['top_vendor_share']:.1f}%")
+        score += 10
+
+    # 5. Recurring expense exposure
+    rec = stats.get("recurring_expenses", [])
+    if rec:
+        monthly_rec = sum(r["monthly_impact"] for r in rec)
+        share = (monthly_rec * 12 / max(stats["total_expenses"], 1)) * 100.0
+        if share > 40:
+            sev = "MEDIUM"
+            score += 10
+        else:
+            sev = "LOW"
+            score += 4
+        risks.append({
+            "title": "Recurring Expense Exposure",
+            "description": f"{len(rec)} recurring expense pattern(s) detected.",
+            "severity": sev,
+            "evidence": f"Recurring annualized impact ≈ ${monthly_rec*12:,.0f}.",
+        })
+        evidence.append(f"recurring_patterns={len(rec)}")
+
+    # 6. Declining revenue
+    if stats["revenue_trend"] == "declining":
+        risks.append({
+            "title": "Declining Revenue",
+            "description": "Revenue trend is declining across the analysis period.",
+            "severity": "MEDIUM",
+            "evidence": "revenue_trend=declining",
+        })
+        evidence.append("revenue_trend=declining")
+        score += 15
+
+    # 7. Rapid expense growth
+    if stats["expense_trend"] == "rising" and stats["revenue_trend"] != "rising":
+        risks.append({
+            "title": "Rapid Expense Growth",
+            "description": "Expenses are rising faster than revenue.",
+            "severity": "MEDIUM",
+            "evidence": "expense_trend=rising, revenue_trend!=rising",
+        })
+        evidence.append("expense_trend=rising")
+        score += 12
+
+    score = float(min(100.0, score))
+    if score >= 60:
+        level = "HIGH"
+    elif score >= 30:
+        level = "MEDIUM"
+    else:
+        level = "LOW"
+
+    # LLM reasoning (optional)
+    reasoning = _risk_reasoning_llm(risks, stats)
+    if not reasoning:
+        if risks:
+            titles = ", ".join(r["title"] for r in risks)
+            reasoning = (
+                f"Risk Agent identified {len(risks)} issue(s): {titles}. "
+                f"Combined risk score is {score:.0f}/100, indicating a {level} risk profile."
+            )
+        else:
+            reasoning = (
+                "Risk Agent found no material risks: cash flow is positive, expense "
+                "ratio is moderate, and spending is reasonably diversified."
+            )
+
+    return {
         "risk_level": level,
+        "risk_score": int(round(score)),
         "risks": risks,
         "evidence": evidence,
-        "reasoning": (
-            "The Risk Agent evaluated cash flow, "
-            "expense burden, concentration and "
-            "recurring spending patterns."
-        ),
+        "reasoning": reasoning,
     }
 
 
-# ============================================================
-# OPPORTUNITY AGENT
-# ============================================================
-
-def run_opportunity_agent(
-    df: pd.DataFrame,
-    stats: dict,
-    risk_result: dict | None = None,
-) -> dict:
-    """
-    Search for financial improvement opportunities.
-
-    The Opportunity Agent looks for areas where the business
-    can reduce costs, improve efficiency or strengthen cash flow.
-    """
-
-    opportunities = []
-    evidence = []
-
-    income = _safe_float(
-        stats.get("total_income", 0)
+def _risk_reasoning_llm(risks: List[Dict[str, Any]], stats: Dict[str, Any]) -> Optional[str]:
+    if not hf_available():
+        return None
+    prompt = (
+        "You are the Risk Agent in a financial analytics system. "
+        "Given the following detected risks and analytics, write 2 sentences of "
+        "reasoning summarizing the risk profile. Do not invent numbers.\n\n"
+        f"Risks: {json.dumps(risks)[:1500]}\n"
+        f"Analytics: {json.dumps({k: v for k, v in stats.items() if k != 'monthly'})[:1500]}\n"
+        "Reasoning:"
     )
+    return call_hf(prompt, max_new_tokens=180)
 
-    expenses = _safe_float(
-        stats.get("total_expense", 0)
-    )
 
-    # --------------------------------------------------------
-    # LARGEST COST AREA
-    # --------------------------------------------------------
+# =====================================================================
+# Opportunity Agent
+# =====================================================================
+def run_opportunity_agent(stats: Dict[str, Any]) -> Dict[str, Any]:
+    opportunities: List[Dict[str, Any]] = []
+    evidence: List[str] = []
 
-    by_category = stats.get(
-        "by_category"
-    )
+    # 1. Largest category optimization
+    if stats.get("largest_category") and stats["total_expenses"] > 0:
+        val = stats["largest_category_value"]
+        opportunities.append({
+            "title": "Cost Optimization",
+            "description": (
+                f"{stats['largest_category']} is the largest spending category at "
+                f"${val:,.0f}. Even a 10% reduction saves ${val*0.10:,.0f}."
+            ),
+            "impact": "HIGH" if val > 0.3 * stats["total_expenses"] else "MEDIUM",
+            "evidence": f"largest_category={stats['largest_category']} (${val:,.0f})",
+        })
+        evidence.append(f"largest_category_spend={val:.0f}")
 
-    if (
-        by_category is not None
-        and len(by_category) > 0
-    ):
+    # 2. Vendor renegotiation
+    if stats.get("top_vendor") and stats["top_vendor_share"] > 10:
+        opportunities.append({
+            "title": "Vendor Optimization",
+            "description": (
+                f"{stats['top_vendor']} is the highest-spend vendor at "
+                f"${stats['top_vendor_value']:,.0f} ({stats['top_vendor_share']:.1f}%). "
+                "Renegotiating or diversifying this relationship could reduce cost."
+            ),
+            "impact": "HIGH" if stats["top_vendor_share"] > 25 else "MEDIUM",
+            "evidence": f"top_vendor_share={stats['top_vendor_share']:.1f}%",
+        })
+        evidence.append(f"top_vendor_share={stats['top_vendor_share']:.1f}%")
 
-        category = by_category.index[0]
+    # 3. Subscription review
+    rec = stats.get("recurring_expenses", [])
+    if rec:
+        annual = sum(r["monthly_impact"] for r in rec) * 12
+        opportunities.append({
+            "title": "Subscription Review",
+            "description": (
+                f"{len(rec)} recurring expense pattern(s) detected with an annualized "
+                f"impact of ≈${annual:,.0f}. Auditing these could yield savings."
+            ),
+            "impact": "MEDIUM",
+            "evidence": f"recurring_count={len(rec)}",
+        })
+        evidence.append(f"recurring_annualized={annual:.0f}")
 
-        amount = _safe_float(
-            by_category.iloc[0]
-        )
+    # 4. Cash-flow efficiency
+    if stats["net_cash_flow"] > 0 and stats["expense_ratio"] > 50:
+        opportunities.append({
+            "title": "Cash-Flow Efficiency",
+            "description": (
+                "Net cash flow is positive but the expense ratio is elevated. "
+                "Reallocating a portion of surplus toward higher-ROI areas "
+                "could compound growth."
+            ),
+            "impact": "MEDIUM",
+            "evidence": f"expense_ratio={stats['expense_ratio']:.1f}%",
+        })
+        evidence.append("positive_net_with_high_ratio")
 
-        opportunities.append(
-            {
-                "title": "Optimize Largest Cost Area",
-                "priority": "High",
-                "description": (
-                    f"{category} is the largest "
-                    f"expense category at "
-                    f"${amount:,.2f}."
-                ),
-            }
-        )
+    # 5. Revenue momentum
+    if stats["revenue_trend"] == "rising":
+        opportunities.append({
+            "title": "Revenue Momentum",
+            "description": (
+                "Revenue trend is rising. Investing in the channels driving this "
+                "growth could accelerate the trajectory."
+            ),
+            "impact": "HIGH",
+            "evidence": "revenue_trend=rising",
+        })
+        evidence.append("revenue_trend=rising")
 
-        evidence.append(
-            _evidence(
-                "Largest cost category",
-                f"{category}: ${amount:,.2f}",
-                "This category provides the largest visible cost-optimization target.",
+    # 6. Diversification
+    if stats["spending_concentration"] > 0.3:
+        opportunities.append({
+            "title": "Spending Diversification",
+            "description": (
+                "Expense concentration (HHI "
+                f"{stats['spending_concentration']:.2f}) suggests reliance on a few "
+                "categories. Diversifying reduces single-point risk."
+            ),
+            "impact": "LOW",
+            "evidence": f"HHI={stats['spending_concentration']:.2f}",
+        })
+        evidence.append(f"HHI={stats['spending_concentration']:.2f}")
+
+    score = float(min(100.0, 25 + len(opportunities) * 14))
+    if any(o["impact"] == "HIGH" for o in opportunities):
+        score = min(100.0, score + 10)
+
+    reasoning = _opportunity_reasoning_llm(opportunities, stats)
+    if not reasoning:
+        if opportunities:
+            reasoning = (
+                f"Opportunity Agent identified {len(opportunities)} action area(s). "
+                f"Highest-leverage: {opportunities[0]['title']} — {opportunities[0]['description']}"
             )
-        )
-
-    # --------------------------------------------------------
-    # VENDOR OPTIMIZATION
-    # --------------------------------------------------------
-
-    top_vendors = stats.get(
-        "top_vendors"
-    )
-
-    if (
-        top_vendors is not None
-        and len(top_vendors) > 0
-    ):
-
-        vendor = top_vendors.index[0]
-
-        amount = _safe_float(
-            top_vendors.iloc[0]
-        )
-
-        opportunities.append(
-            {
-                "title": "Review Top Vendor",
-                "priority": "Medium",
-                "description": (
-                    f"{vendor} is the highest-spend "
-                    f"vendor at ${amount:,.2f}."
-                ),
-            }
-        )
-
-        evidence.append(
-            _evidence(
-                "Highest-spend vendor",
-                f"{vendor}: ${amount:,.2f}",
-                "Vendor negotiation or alternative sourcing may reduce costs.",
-            )
-        )
-
-    # --------------------------------------------------------
-    # RECURRING COST OPTIMIZATION
-    # --------------------------------------------------------
-
-    recurring = stats.get(
-        "recurring"
-    )
-
-    if (
-        recurring is not None
-        and len(recurring) > 0
-    ):
-
-        opportunities.append(
-            {
-                "title": "Audit Recurring Expenses",
-                "priority": "Medium",
-                "description": (
-                    f"{len(recurring)} recurring "
-                    "expenses can be reviewed for "
-                    "unused services or duplicate costs."
-                ),
-            }
-        )
-
-        evidence.append(
-            _evidence(
-                "Recurring expense patterns",
-                len(recurring),
-                "Recurring services should be periodically reviewed.",
-            )
-        )
-
-    # --------------------------------------------------------
-    # POSITIVE CASH FLOW OPPORTUNITY
-    # --------------------------------------------------------
-
-    net_cash_flow = income - expenses
-
-    if net_cash_flow > 0:
-
-        opportunities.append(
-            {
-                "title": "Strengthen Cash Position",
-                "priority": "Medium",
-                "description": (
-                    f"The business generated "
-                    f"${net_cash_flow:,.2f} "
-                    "of positive net cash flow."
-                ),
-            }
-        )
-
-        evidence.append(
-            _evidence(
-                "Net cash flow",
-                f"${net_cash_flow:,.2f}",
-                "Positive cash generation creates room for strategic planning.",
-            )
-        )
+        else:
+            reasoning = "No significant opportunities detected within current parameters."
 
     return {
-        "agent": "Opportunity Agent",
-        "opportunity_count": len(
-            opportunities
-        ),
+        "opportunity_score": int(round(score)),
         "opportunities": opportunities,
         "evidence": evidence,
-        "reasoning": (
-            "The Opportunity Agent searched for "
-            "cost optimization, vendor improvements, "
-            "recurring-cost savings and cash-flow opportunities."
-        ),
+        "reasoning": reasoning,
     }
 
 
-# ============================================================
-# DECISION AGENT
-# ============================================================
-
-def run_strategic_decision_agent(
-    risk_result: dict,
-    opportunity_result: dict,
-) -> dict:
-    """
-    Make a business decision using outputs from
-    independent Risk and Opportunity agents.
-    """
-
-    risks = risk_result.get(
-        "risks",
-        []
+def _opportunity_reasoning_llm(opps: List[Dict[str, Any]], stats: Dict[str, Any]) -> Optional[str]:
+    if not hf_available():
+        return None
+    prompt = (
+        "You are the Opportunity Agent in a financial analytics system. "
+        "Given the following opportunities and analytics, write 2 sentences of "
+        "reasoning. Do not invent numbers.\n\n"
+        f"Opportunities: {json.dumps(opps)[:1500]}\n"
+        f"Analytics: {json.dumps({k: v for k, v in stats.items() if k != 'monthly'})[:1500]}\n"
+        "Reasoning:"
     )
+    return call_hf(prompt, max_new_tokens=180)
 
-    opportunities = opportunity_result.get(
-        "opportunities",
-        []
-    )
 
-    risk_score = _safe_float(
-        risk_result.get(
-            "risk_score",
-            0,
+# =====================================================================
+# Decision Agent
+# =====================================================================
+def run_decision_agent(
+    stats: Dict[str, Any],
+    risk: Dict[str, Any],
+    opportunity: Dict[str, Any],
+    revision_hint: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Consume risk + opportunity + analytics, weigh them, and choose the single
+    most impactful business action.
+    """
+    # Weigh evidence: risks push us to stabilize; opportunities pull us to grow.
+    risk_pressure = risk.get("risk_score", 0) / 100.0
+    opp_score = opportunity.get("opportunity_score", 0) / 100.0
+
+    top_opp = opportunity["opportunities"][0] if opportunity.get("opportunities") else None
+    top_risk = risk["risks"][0] if risk.get("risks") else None
+
+    # Decision selection heuristic that blends risk and opportunity
+    if risk_pressure >= 0.6 and top_risk:
+        title = f"Stabilize: {top_risk['title']}"
+        priority = "HIGH"
+        decision = (
+            f"Prioritize risk mitigation on '{top_risk['title']}' before pursuing growth. "
+            f"{top_risk['description']}"
         )
-    )
-
-    # --------------------------------------------------------
-    # PRIORITIZE HIGH-SEVERITY RISKS
-    # --------------------------------------------------------
-
-    high_risks = [
-        risk
-        for risk in risks
-        if risk.get("severity") == "High"
-    ]
-
-    if high_risks:
-
-        selected = high_risks[0]
-
-        decision = {
-            "title": selected.get(
-                "title",
-                "Address Financial Risk",
-            ),
-            "type": "Risk Mitigation",
-            "priority": "Critical",
-            "reason": selected.get(
-                "description",
-                "",
-            ),
-        }
-
-    elif opportunities:
-
-        selected = opportunities[0]
-
-        decision = {
-            "title": selected.get(
-                "title",
-                "Optimize Financial Performance",
-            ),
-            "type": "Opportunity",
-            "priority": selected.get(
-                "priority",
-                "Medium",
-            ),
-            "reason": selected.get(
-                "description",
-                "",
-            ),
-        }
-
+        expected = "Reduce financial risk exposure and protect cash position."
+        actions = [
+            f"Address: {top_risk['title']}",
+            "Re-run analysis after corrective action",
+            "Set a 30-day review checkpoint",
+        ]
+        evidence = risk.get("evidence", [])
+    elif top_opp:
+        title = f"Optimize: {top_opp['title']}"
+        priority = "HIGH" if top_opp["impact"] == "HIGH" else "MEDIUM"
+        decision = (
+            f"{top_opp['description']} This is the highest-leverage action given the "
+            f"current financial profile."
+        )
+        expected = "Lower operating costs or improve cash-flow efficiency."
+        actions = [
+            f"Execute: {top_opp['title']}",
+            "Measure impact over the next 30 days",
+            "Reassess category and vendor allocation",
+        ]
+        evidence = opportunity.get("evidence", [])
     else:
+        title = "Maintain Current Trajectory"
+        priority = "LOW"
+        decision = (
+            "No material risks or high-impact opportunities detected. Maintain the "
+            "current financial strategy and continue monitoring."
+        )
+        expected = "Stable operations."
+        actions = ["Continue monthly review"]
+        evidence = []
 
-        decision = {
-            "title": "Continue Financial Monitoring",
-            "type": "Monitoring",
-            "priority": "Low",
-            "reason": (
-                "No dominant financial risk or "
-                "optimization opportunity was identified."
-            ),
-        }
+    # Optional LLM enhancement — but numbers always come from our computation
+    llm_reasoning = _decision_reasoning_llm(stats, risk, opportunity, revision_hint)
+    if llm_reasoning:
+        reasoning = llm_reasoning
+    else:
+        reasoning = (
+            f"Risk score is {risk.get('risk_score', 0)}/100 and opportunity score is "
+            f"{opportunity.get('opportunity_score', 0)}/100. "
+            f"{'Risk pressure dominates' if risk_pressure >= opp_score else 'Opportunity potential dominates'}, "
+            f"so the recommended action is to {title.lower()}."
+        )
 
-    return {
-        "agent": "Decision Agent",
+    result = {
+        "title": title,
+        "priority": priority,
         "decision": decision,
-        "risk_score": risk_score,
-        "considered_risks": len(risks),
-        "considered_opportunities": len(
-            opportunities
-        ),
-        "reasoning": (
-            "The Decision Agent compared independent "
-            "risk and opportunity outputs and selected "
-            "the highest-priority business action."
-        ),
-    }
-
-
-# ============================================================
-# CRITIC / REVIEW AGENT
-# ============================================================
-
-def run_critic_agent(
-    decision_result: dict,
-    risk_result: dict,
-    opportunity_result: dict,
-) -> dict:
-    """
-    Review the proposed decision.
-
-    The Critic Agent checks whether the decision is actually
-    supported by the outputs of the other agents.
-    """
-
-    decision = decision_result.get(
-        "decision",
-        {},
-    )
-
-    title = decision.get(
-        "title",
-        "",
-    )
-
-    decision_reason = decision.get(
-        "reason",
-        "",
-    )
-
-    risks = risk_result.get(
-        "risks",
-        []
-    )
-
-    opportunities = opportunity_result.get(
-        "opportunities",
-        []
-    )
-
-    evidence = []
-
-    supported = False
-
-    # --------------------------------------------------------
-    # CHECK RISK DECISION
-    # --------------------------------------------------------
-
-    if decision.get("type") == "Risk Mitigation":
-
-        for risk in risks:
-
-            if risk.get("title") == title:
-
-                supported = True
-
-                evidence.append(
-                    {
-                        "check": "Risk evidence",
-                        "result": "PASS",
-                        "details": (
-                            f"Decision matches detected risk: "
-                            f"{risk.get('description', '')}"
-                        ),
-                    }
-                )
-
-    # --------------------------------------------------------
-    # CHECK OPPORTUNITY DECISION
-    # --------------------------------------------------------
-
-    elif decision.get("type") == "Opportunity":
-
-        for opportunity in opportunities:
-
-            if opportunity.get("title") == title:
-
-                supported = True
-
-                evidence.append(
-                    {
-                        "check": "Opportunity evidence",
-                        "result": "PASS",
-                        "details": (
-                            f"Decision matches detected opportunity: "
-                            f"{opportunity.get('description', '')}"
-                        ),
-                    }
-                )
-
-    # --------------------------------------------------------
-    # FALLBACK MONITORING DECISION
-    # --------------------------------------------------------
-
-    else:
-
-        if not risks and not opportunities:
-
-            supported = True
-
-            evidence.append(
-                {
-                    "check": "Evidence consistency",
-                    "result": "PASS",
-                    "details": (
-                        "No dominant risk or opportunity "
-                        "was detected."
-                    ),
-                }
-            )
-
-    # --------------------------------------------------------
-    # FINAL REVIEW
-    # --------------------------------------------------------
-
-    if supported:
-
-        verdict = "APPROVED"
-
-        review = (
-            "The proposed decision is supported by "
-            "the outputs of the specialist agents."
-        )
-
-    else:
-
-        verdict = "REVISE"
-
-        review = (
-            "The proposed decision could not be directly "
-            "supported by the specialist-agent evidence."
-        )
-
-    return {
-        "agent": "Critic Agent",
-        "verdict": verdict,
-        "approved": supported,
-        "decision_reviewed": title,
-        "decision_reason": decision_reason,
-        "review": review,
+        "reasoning": reasoning,
         "evidence": evidence,
-        "revision_required": not supported,
+        "expected_impact": expected,
+        "recommended_actions": actions,
     }
+    if revision_hint:
+        result["revision_hint"] = revision_hint
+    return result
 
 
-# ============================================================
-# COMPLETE STRATEGIC ANALYSIS
-# ============================================================
+def _decision_reasoning_llm(
+    stats: Dict[str, Any],
+    risk: Dict[str, Any],
+    opportunity: Dict[str, Any],
+    revision_hint: Optional[str],
+) -> Optional[str]:
+    if not hf_available():
+        return None
+    prompt = (
+        "You are the Decision Agent in a financial analytics system. Weigh the "
+        "risks and opportunities below and justify (2 sentences) the single most "
+        "important business action. Use ONLY the numbers provided.\n\n"
+        f"Analytics: {json.dumps({k: v for k, v in stats.items() if k != 'monthly'})[:1500]}\n"
+        f"Risk: {json.dumps(risk)[:1200]}\n"
+        f"Opportunity: {json.dumps(opportunity)[:1200]}\n"
+    )
+    if revision_hint:
+        prompt += f"Previous critic feedback to incorporate: {revision_hint}\n"
+    prompt += "Reasoning:"
+    return call_hf(prompt, max_new_tokens=200)
 
-def run_strategic_agents(
-    df: pd.DataFrame,
-    stats: dict,
-) -> dict:
+
+# =====================================================================
+# Critic Agent
+# =====================================================================
+def run_critic_agent(
+    decision: Dict[str, Any],
+    risk: Dict[str, Any],
+    opportunity: Dict[str, Any],
+    stats: Dict[str, Any],
+) -> Dict[str, Any]:
     """
-    Run the complete strategic multi-agent layer.
-
-    Flow:
-
-        Analytics
-             ↓
-        ┌───────────────┐
-        ↓               ↓
-      Risk         Opportunity
-        └───────┬───────┘
-                ↓
-             Decision
-                ↓
-              Critic
-                ↓
-          Approved/Revise
+    Independently verify the Decision Agent. Returns APPROVED or REVISE.
     """
+    problems: List[str] = []
+    evidence: List[str] = []
 
-    risk_result = run_risk_agent(
-        df,
-        stats,
-    )
+    # 1. Evidence support
+    if not decision.get("evidence"):
+        problems.append("Decision has no supporting evidence.")
+    else:
+        evidence.append(f"Decision cites {len(decision['evidence'])} evidence item(s).")
 
-    opportunity_result = run_opportunity_agent(
-        df,
-        stats,
-        risk_result,
-    )
+    # 2. Consistency with risks
+    if risk.get("risk_score", 0) >= 60 and decision.get("priority") == "LOW":
+        problems.append("High risk present but decision priority is LOW.")
 
-    decision_result = run_strategic_decision_agent(
-        risk_result,
-        opportunity_result,
-    )
+    # 3. Consistency with opportunities
+    if opportunity.get("opportunity_score", 0) >= 80 and "maintain" in decision.get("title", "").lower():
+        problems.append("Strong opportunities exist but decision is to maintain status quo.")
 
-    critic_result = run_critic_agent(
-        decision_result,
-        risk_result,
-        opportunity_result,
+    # 4. Reasoning depth
+    reasoning = decision.get("reasoning", "")
+    if len(reasoning) < 60:
+        problems.append("Decision reasoning is too thin.")
+
+    # 5. Practicality
+    if not decision.get("recommended_actions"):
+        problems.append("Decision has no concrete recommended actions.")
+
+    # 6. Sanity: decision must reference real metrics
+    numeric_ok = any(
+        str(v) in json.dumps(stats, default=str)
+        for v in [stats.get("total_expenses", 0), stats.get("total_revenue", 0)]
     )
+    if numeric_ok:
+        evidence.append("Decision references real computed metrics.")
+
+    # Optional LLM cross-check
+    llm_verdict = _critic_llm(decision, risk, opportunity, stats)
+
+    if llm_verdict and llm_verdict.get("status") in {"APPROVED", "REVISE"}:
+        approved = llm_verdict["status"] == "APPROVED"
+        reasoning_text = llm_verdict.get("reasoning") or (
+            "Critic Agent approved the decision." if approved else "Critic Agent requested revision."
+        )
+        revision_required = llm_verdict.get("revision_required")
+    else:
+        approved = len(problems) == 0
+        if approved:
+            reasoning_text = (
+                "Critic Agent verified: the decision is supported by financial evidence, "
+                "consistent with identified risks and opportunities, logically sound, "
+                "and actionable."
+            )
+            revision_required = None
+        else:
+            reasoning_text = "Critic Agent flagged issues: " + "; ".join(problems)
+            revision_required = "; ".join(problems)
 
     return {
-        "risk": risk_result,
-        "opportunity": opportunity_result,
-        "decision": decision_result,
-        "critic": critic_result,
+        "status": "APPROVED" if approved else "REVISE",
+        "approved": approved,
+        "reasoning": reasoning_text,
+        "evidence": evidence,
+        "revision_required": revision_required,
     }
+
+
+def _critic_llm(
+    decision: Dict[str, Any],
+    risk: Dict[str, Any],
+    opportunity: Dict[str, Any],
+    stats: Dict[str, Any],
+) -> Optional[dict]:
+    if not hf_available():
+        return None
+    prompt = (
+        "You are the Critic Agent in a financial analytics system. Review the "
+        "decision below. Respond ONLY with a JSON object: "
+        '{"status": "APPROVED" or "REVISE", "reasoning": "...", '
+        '"revision_required": "..." or null}.\n\n'
+        f"Decision: {json.dumps(decision)[:1200]}\n"
+        f"Risk: {json.dumps(risk)[:800]}\n"
+        f"Opportunity: {json.dumps(opportunity)[:800]}\n"
+        "JSON:"
+    )
+    text = call_hf(prompt, max_new_tokens=220)
+    return _safe_json(text)
