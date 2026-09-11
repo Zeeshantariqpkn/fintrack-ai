@@ -57,7 +57,6 @@ class FinancialState:
 
     def to_dict(self) -> Dict[str, Any]:
         data = asdict(self)
-        # DataFrame is not JSON-serializable; keep it out of the dict export.
         data["df"] = None
         return data
 
@@ -82,7 +81,6 @@ class FinancialState:
         expense_ratio = self.stats.get("expense_ratio", 0.0)
         risk_score = self.risk.get("risk_score", 50)
 
-        # Cash flow health
         if net < 0:
             score -= 30
         elif revenue > 0:
@@ -92,7 +90,6 @@ class FinancialState:
             elif margin < 0.25:
                 score -= 8
 
-        # Expense ratio
         if expense_ratio > 90:
             score -= 25
         elif expense_ratio > 75:
@@ -100,7 +97,6 @@ class FinancialState:
         elif expense_ratio > 60:
             score -= 8
 
-        # Risk score penalty (risk_score 0..100, higher = riskier)
         score -= risk_score * 0.35
 
         return int(max(0, min(100, round(score))))
@@ -114,3 +110,26 @@ class FinancialState:
         if s >= 40:
             return "Watch"
         return "At Risk"
+
+
+# =====================================================================
+# Convenience accessors used by every page
+# =====================================================================
+def get_financial_state() -> FinancialState:
+    """
+    Return the FinancialState stored in Streamlit session_state,
+    creating an empty one if it doesn't exist yet.
+    """
+    import streamlit as st
+
+    if "fin_state" not in st.session_state:
+        st.session_state.fin_state = FinancialState()
+    return st.session_state.fin_state
+
+
+def reset_financial_state() -> FinancialState:
+    """Clear and return a fresh FinancialState in session_state."""
+    import streamlit as st
+
+    st.session_state.fin_state = FinancialState()
+    return st.session_state.fin_state
