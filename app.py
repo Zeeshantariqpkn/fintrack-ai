@@ -1,13 +1,13 @@
+
 import os
 
 import streamlit as st
-import plotly.express as px
 
 from utils.financial_state import (
     get_financial_state,
     has_financial_state,
-    run_financial_analysis,
     save_financial_state,
+    run_financial_analysis,
 )
 
 
@@ -29,258 +29,226 @@ st.set_page_config(
 
 st.markdown(
     """
-<style>
-
-    /* ---------- GLOBAL ---------- */
-
-    .stApp {
-        background: #f7f9fc;
-    }
+    <style>
 
     .block-container {
         max-width: 1400px;
-        padding-top: 2rem;
-        padding-bottom: 4rem;
+        padding-top: 1.5rem;
+        padding-bottom: 3rem;
     }
+
+    /* ---------- General ---------- */
 
     h1, h2, h3 {
-        color: #172033;
-        letter-spacing: -0.02em;
-    }
-
-    p {
-        color: #667085;
-    }
-
-
-    /* ---------- SIDEBAR ---------- */
-
-    section[data-testid="stSidebar"] {
-        background: #ffffff;
-        border-right: 1px solid #e7ebf2;
-    }
-
-    .sidebar-brand {
-        font-size: 21px;
-        font-weight: 800;
-        color: #172033;
-        margin-bottom: 2px;
-    }
-
-    .sidebar-subtitle {
-        font-size: 12px;
-        color: #98a2b3;
-        margin-bottom: 24px;
-    }
-
-    .nav-label {
-        font-size: 11px;
-        font-weight: 700;
-        color: #98a2b3;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        margin-top: 22px;
-        margin-bottom: 8px;
-    }
-
-
-    /* ---------- HEADER ---------- */
-
-    .page-eyebrow {
-        color: #2563eb;
-        font-size: 13px;
-        font-weight: 700;
-        margin-bottom: 5px;
+        color: #0f172a;
     }
 
     .page-title {
-        font-size: 34px;
-        font-weight: 800;
-        color: #172033;
-        margin-bottom: 4px;
+        font-size: 32px;
+        font-weight: 750;
+        color: #0f172a;
+        margin-bottom: 3px;
     }
 
-    .page-description {
-        color: #667085;
-        font-size: 15px;
-        margin-bottom: 28px;
+    .page-subtitle {
+        color: #64748b;
+        font-size: 14px;
+        margin-bottom: 25px;
     }
 
-
-    /* ---------- METRICS ---------- */
+    /* ---------- Metric Cards ---------- */
 
     .metric-card {
         background: #ffffff;
-        border: 1px solid #e7ebf2;
+        border: 1px solid #e2e8f0;
         border-radius: 14px;
-        padding: 20px;
-        min-height: 132px;
-        box-shadow: 0 2px 8px rgba(16, 24, 40, 0.03);
+        padding: 18px 20px;
+        min-height: 120px;
     }
 
     .metric-label {
-        color: #667085;
+        color: #64748b;
         font-size: 13px;
-        font-weight: 600;
-        margin-bottom: 10px;
+        font-weight: 500;
+        margin-bottom: 8px;
     }
 
     .metric-value {
-        color: #172033;
+        color: #0f172a;
         font-size: 27px;
-        font-weight: 800;
-        line-height: 1.2;
+        font-weight: 750;
     }
 
     .metric-subtitle {
-        color: #98a2b3;
-        font-size: 12px;
-        margin-top: 8px;
+        color: #94a3b8;
+        font-size: 11px;
+        line-height: 1.5;
+        margin-top: 7px;
     }
 
-
-    /* ---------- SECTION ---------- */
-
-    .section-title {
-        font-size: 19px;
-        font-weight: 750;
-        color: #172033;
-        margin-top: 30px;
-        margin-bottom: 14px;
-    }
-
-
-    /* ---------- DECISION ---------- */
+    /* ---------- AI Decision ---------- */
 
     .decision-card {
         background: #ffffff;
-        border: 1px solid #dfe7f5;
-        border-left: 5px solid #2563eb;
+        border: 1px solid #e2e8f0;
         border-radius: 14px;
-        padding: 23px;
-        box-shadow: 0 3px 12px rgba(16, 24, 40, 0.04);
-        min-height: 210px;
+        padding: 22px;
+        min-height: 205px;
     }
 
     .decision-label {
-        color: #2563eb;
+        color: #64748b;
         font-size: 12px;
-        font-weight: 800;
-        text-transform: uppercase;
-        letter-spacing: 0.07em;
+        font-weight: 600;
         margin-bottom: 8px;
     }
 
     .decision-title {
-        color: #172033;
-        font-size: 22px;
-        font-weight: 800;
-        margin-bottom: 8px;
+        color: #0f172a;
+        font-size: 21px;
+        font-weight: 750;
+        margin-bottom: 10px;
     }
 
     .decision-text {
-        color: #667085;
-        font-size: 14px;
+        color: #475569;
+        font-size: 13px;
         line-height: 1.6;
     }
 
+    .recommended-label {
+        color: #0f172a;
+        font-size: 12px;
+        font-weight: 700;
+        margin-top: 18px;
+        margin-bottom: 4px;
+    }
 
-    /* ---------- HEALTH ---------- */
+    .recommended-text {
+        color: #64748b;
+        font-size: 12px;
+        line-height: 1.5;
+    }
+
+    /* ---------- Health ---------- */
 
     .health-card {
         background: #ffffff;
-        border: 1px solid #e7ebf2;
+        border: 1px solid #e2e8f0;
         border-radius: 14px;
-        padding: 23px;
-        min-height: 210px;
+        padding: 22px;
+        min-height: 205px;
+    }
+
+    .health-label {
+        color: #64748b;
+        font-size: 12px;
+        font-weight: 600;
+        margin-bottom: 6px;
     }
 
     .health-score {
-        font-size: 48px;
-        font-weight: 850;
-        color: #172033;
-        line-height: 1;
+        color: #0f172a;
+        font-size: 42px;
+        font-weight: 800;
+        line-height: 1.1;
     }
 
     .health-status {
         color: #16a34a;
-        font-size: 14px;
+        font-size: 13px;
         font-weight: 700;
-        margin-top: 8px;
+        margin-top: 6px;
     }
 
+    /* ---------- Activity ---------- */
 
-    /* ---------- AGENT ACTIVITY ---------- */
-
-    .agent-card {
+    .activity-container {
         background: #ffffff;
-        border: 1px solid #e7ebf2;
-        border-radius: 12px;
-        padding: 15px 17px;
-        margin-bottom: 10px;
+        border: 1px solid #e2e8f0;
+        border-radius: 14px;
+        padding: 18px 20px;
     }
 
-    .agent-name {
-        color: #172033;
-        font-size: 14px;
-        font-weight: 700;
+    .activity-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        padding: 11px 0;
+        border-bottom: 1px solid #f1f5f9;
     }
 
-    .agent-message {
-        color: #667085;
-        font-size: 12px;
-        margin-top: 4px;
+    .activity-row:last-child {
+        border-bottom: none;
     }
 
     .agent-dot {
         color: #16a34a;
-        font-size: 16px;
-        margin-right: 7px;
+        font-size: 14px;
+        font-weight: 700;
+        width: 18px;
+        flex-shrink: 0;
     }
 
+    .agent-name {
+        color: #0f172a;
+        font-size: 13px;
+        font-weight: 650;
+    }
 
-    /* ---------- EMPTY STATE ---------- */
+    .agent-message {
+        color: #64748b;
+        font-size: 11px;
+        margin-top: 2px;
+    }
 
-    .empty-card {
-        background: #ffffff;
-        border: 1px dashed #cfd7e6;
+    /* ---------- Findings ---------- */
+
+    .finding {
+        background: #f8fafc;
+        border-radius: 10px;
+        padding: 13px 15px;
+        margin-bottom: 9px;
+    }
+
+    .finding-title {
+        color: #0f172a;
+        font-size: 13px;
+        font-weight: 650;
+    }
+
+    .finding-description {
+        color: #64748b;
+        font-size: 11px;
+        margin-top: 3px;
+        line-height: 1.5;
+    }
+
+    /* ---------- Empty State ---------- */
+
+    .empty-state {
+        background: #f8fbff;
+        border: 1px solid #dbeafe;
         border-radius: 16px;
-        padding: 55px 30px;
+        padding: 45px 30px;
         text-align: center;
         margin-top: 30px;
     }
 
-    .empty-icon {
-        font-size: 42px;
-        margin-bottom: 12px;
-    }
-
     .empty-title {
-        color: #172033;
-        font-size: 21px;
-        font-weight: 800;
+        color: #0f172a;
+        font-size: 22px;
+        font-weight: 750;
     }
 
     .empty-text {
-        color: #667085;
-        font-size: 14px;
-        max-width: 600px;
-        margin: 8px auto 0;
+        color: #64748b;
+        font-size: 13px;
+        margin-top: 8px;
     }
 
-
-    /* ---------- FOOTER ---------- */
-
-    .footer {
-        border-top: 1px solid #e7ebf2;
-        margin-top: 45px;
-        padding-top: 18px;
-        color: #98a2b3;
-        font-size: 12px;
-    }
-
-</style>
-""",
+    </style>
+    """,
     unsafe_allow_html=True,
 )
 
@@ -292,108 +260,76 @@ st.markdown(
 with st.sidebar:
 
     st.markdown(
-        '<div class="sidebar-brand">💰 FinTrack AI</div>',
+        """
+        <div style="
+            font-size:22px;
+            font-weight:800;
+            color:#0f172a;
+            margin-bottom:2px;
+        ">
+            💰 FinTrack AI
+        </div>
+
+        <div style="
+            color:#64748b;
+            font-size:12px;
+            margin-bottom:22px;
+        ">
+            Agentic Financial Intelligence
+        </div>
+        """,
         unsafe_allow_html=True,
     )
 
-    st.markdown(
-        '<div class="sidebar-subtitle">'
-        'Agentic Financial Intelligence'
-        '</div>',
-        unsafe_allow_html=True,
-    )
-
-    st.markdown(
-        '<div class="nav-label">Analyze</div>',
-        unsafe_allow_html=True,
-    )
+    st.markdown("### Financial Data")
 
     uploaded_file = st.file_uploader(
         "Upload transaction CSV",
         type=["csv"],
         help=(
-            "CSV must contain date, description "
-            "and amount columns."
+            "CSV should contain date, description and amount columns."
         ),
     )
 
-    st.markdown(
-        '<div class="nav-label">AI Configuration</div>',
-        unsafe_allow_html=True,
-    )
+    st.markdown("### AI Configuration")
 
     hf_token = st.text_input(
-        "Hugging Face token",
-        value=os.environ.get(
-            "HF_TOKEN",
-            "",
-        ),
+        "Hugging Face Token",
         type="password",
-        help=(
-            "Optional. Enables Hugging Face "
-            "transaction categorization."
-        ),
+        value=os.environ.get("HF_TOKEN", ""),
+        help="Optional. Enables Hugging Face transaction categorization.",
     )
-
-    if hf_token:
-        os.environ["HF_TOKEN"] = hf_token
 
     use_llm = st.checkbox(
         "Use AI categorization",
         value=True,
     )
 
-    st.markdown("")
-
-    analyze_clicked = st.button(
-        "🚀 Analyze Financials",
-        use_container_width=True,
+    analyze_button = st.button(
+        "Analyze Financials",
         type="primary",
-    )
-
-    clear_clicked = st.button(
-        "Clear Analysis",
         use_container_width=True,
     )
 
-    st.markdown(
-        '<div class="nav-label">Pipeline</div>',
-        unsafe_allow_html=True,
-    )
 
-    st.caption("Data Agent")
-    st.caption("Categorization Agent")
-    st.caption("Analytics Agent")
-    st.caption("Decision Agent")
-    st.caption("Insight Agent")
+# ============================================================
+# SET HF TOKEN
+# ============================================================
+
+if hf_token:
+    os.environ["HF_TOKEN"] = hf_token
 
 
 # ============================================================
-# CLEAR STATE
+# RUN ANALYSIS
 # ============================================================
 
-if clear_clicked:
-
-    for key in [
-        "financial_state",
-        "analysis_source",
-    ]:
-        if key in st.session_state:
-            del st.session_state[key]
-
-    st.rerun()
-
-
-# ============================================================
-# ANALYSIS
-# ============================================================
-
-if analyze_clicked:
+if analyze_button:
 
     if uploaded_file is None:
 
-        st.warning(
-            "Upload a transaction CSV first."
+        st.error(
+            "Please upload a transaction CSV first."
         )
 
     else:
@@ -411,13 +347,11 @@ if analyze_clicked:
 
                 save_financial_state(state)
 
-                st.session_state[
-                    "analysis_source"
-                ] = uploaded_file.name
-
                 st.success(
-                    "Financial analysis completed."
+                    "Financial analysis completed successfully."
                 )
+
+                st.rerun()
 
             except Exception as exc:
 
@@ -427,61 +361,36 @@ if analyze_clicked:
 
 
 # ============================================================
-# HEADER
-# ============================================================
-
-st.markdown(
-    '<div class="page-eyebrow">'
-    'AGENTIC FINANCIAL INTELLIGENCE'
-    '</div>',
-    unsafe_allow_html=True,
-)
-
-st.markdown(
-    '<div class="page-title">'
-    'Financial Overview'
-    '</div>',
-    unsafe_allow_html=True,
-)
-
-st.markdown(
-    '<div class="page-description">'
-    'Understand your business performance, '
-    'discover financial risks, and let AI '
-    'identify the next best action.'
-    '</div>',
-    unsafe_allow_html=True,
-)
-
-
-# ============================================================
-# EMPTY STATE
+# LOAD STATE
 # ============================================================
 
 if not has_financial_state():
 
     st.markdown(
         """
-        <div class="empty-card">
-            <div class="empty-icon">📊</div>
-            <div class="empty-title">
-                Start your financial analysis
-            </div>
-            <div class="empty-text">
-                Upload a transaction CSV from the sidebar
-                and let FinTrack AI's agents analyze your
-                financial performance, spending patterns,
-                risks and opportunities.
-            </div>
+        <div class="page-title">
+            Financial Overview
         </div>
-        """,
-        unsafe_allow_html=True,
-    )
 
-    st.markdown(
-        """
-        <div class="footer">
-            FinTrack AI · Agentic Financial Analytics for SMBs
+        <div class="page-subtitle">
+            AI-powered financial intelligence for your business.
+        </div>
+
+        <div class="empty-state">
+
+            <div style="font-size:42px;">
+                📊
+            </div>
+
+            <div class="empty-title">
+                No financial analysis yet
+            </div>
+
+            <div class="empty-text">
+                Upload your transaction CSV from the sidebar
+                and click "Analyze Financials".
+            </div>
+
         </div>
         """,
         unsafe_allow_html=True,
@@ -490,16 +399,34 @@ if not has_financial_state():
     st.stop()
 
 
-# ============================================================
-# GET STATE
-# ============================================================
-
 state = get_financial_state()
 
 df = state["df"]
 stats = state["stats"]
-decisions = state["decisions"]
-agent_status = state["agent_status"]
+
+decisions = state.get(
+    "decisions",
+    {},
+)
+
+risk = state.get(
+    "risk",
+    {},
+)
+
+opportunity = state.get(
+    "opportunity",
+    {},
+)
+
+decision = state.get(
+    "decision",
+    {},
+)
+
+critic = state.get(
+    "critic",
+    {})
 
 
 # ============================================================
@@ -507,189 +434,249 @@ agent_status = state["agent_status"]
 # ============================================================
 
 income = float(
-    stats.get("total_income", 0)
+    stats.get(
+        "total_income",
+        0,
+    )
 )
 
 expenses = float(
-    stats.get("total_expense", 0)
+    stats.get(
+        "total_expense",
+        0,
+    )
 )
 
 net_cash_flow = income - expenses
 
-health_score = int(
-    decisions.get(
-        "health_score",
-        0,
-    )
+if income > 0:
+    expense_ratio = (
+        expenses / income
+    ) * 100
+else:
+    expense_ratio = 100.0
+
+
+# ============================================================
+# HEALTH SCORE
+# ============================================================
+
+health_score = decisions.get(
+    "health_score",
+    0,
 )
 
-status = decisions.get(
+health_status = decisions.get(
     "status",
     "Unknown",
 )
 
-expense_ratio = float(
-    decisions.get(
-        "expense_ratio",
-        0,
-    )
-)
+
+# ============================================================
+# HEADER
+# ============================================================
 
 st.markdown(
-    '<div class="section-title">'
-    'Business Snapshot'
-    '</div>',
+    """
+    <div class="page-title">
+        Financial Overview
+    </div>
+
+    <div class="page-subtitle">
+        AI-powered financial intelligence and autonomous decision support.
+    </div>
+    """,
     unsafe_allow_html=True,
 )
 
-metric_col1, metric_col2, metric_col3, metric_col4 = (
-    st.columns(4)
-)
+
+# ============================================================
+# TOP METRICS
+# ============================================================
+
+col1, col2, col3, col4 = st.columns(4)
 
 
-with metric_col1:
+with col1:
 
     st.markdown(
         f"""
         <div class="metric-card">
-            <div class="metric-label">Revenue</div>
+
+            <div class="metric-label">
+                Revenue
+            </div>
+
             <div class="metric-value">
-                ${income:,.0f}
+                ${income:,.2f}
             </div>
+
             <div class="metric-subtitle">
-                Total incoming cash
+                Total business income
             </div>
+
         </div>
         """,
         unsafe_allow_html=True,
     )
 
 
-with metric_col2:
+with col2:
 
     st.markdown(
         f"""
         <div class="metric-card">
-            <div class="metric-label">Expenses</div>
+
+            <div class="metric-label">
+                Expenses
+            </div>
+
             <div class="metric-value">
-                ${expenses:,.0f}
+                ${expenses:,.2f}
             </div>
+
             <div class="metric-subtitle">
-                Total outgoing cash
+                Total business spending
             </div>
+
         </div>
         """,
         unsafe_allow_html=True,
     )
 
 
-with metric_col3:
+with col3:
 
     st.markdown(
         f"""
         <div class="metric-card">
-            <div class="metric-label">Net Cash Flow</div>
-            <div class="metric-value">
-                ${net_cash_flow:,.0f}
+
+            <div class="metric-label">
+                Net Cash Flow
             </div>
+
+            <div class="metric-value">
+                ${net_cash_flow:,.2f}
+            </div>
+
             <div class="metric-subtitle">
                 Revenue minus expenses
             </div>
+
         </div>
         """,
         unsafe_allow_html=True,
     )
 
 
-with metric_col4:
+with col4:
 
     st.markdown(
         f"""
         <div class="metric-card">
-            <div class="metric-label">Financial Health</div>
+
+            <div class="metric-label">
+                Expense Ratio
+            </div>
+
             <div class="metric-value">
-                {health_score}/100
+                {expense_ratio:.1f}%
             </div>
+
             <div class="metric-subtitle">
-                {status} · {expense_ratio:.1f}% expense ratio
+                Expenses as percentage of revenue
             </div>
+
         </div>
         """,
         unsafe_allow_html=True,
     )
+
+
+# ============================================================
+# AI DECISION + FINANCIAL HEALTH
+# ============================================================
+
+st.markdown(
+    "<div style='height:24px'></div>",
+    unsafe_allow_html=True,
+)
+
+decision_column, health_column = st.columns(
+    [1.35, 1]
+)
 
 
 # ============================================================
 # AI DECISION
 # ============================================================
 
-st.markdown(
-    '<div class="section-title">'
-    'What should you do?'
-    '</div>',
-    unsafe_allow_html=True,
-)
+with decision_column:
 
-decision_col, health_col = st.columns(
-    [2, 1],
-    gap="large",
-)
-
-
-with decision_col:
-
-    risks = decisions.get(
-        "risks",
-        [],
+    # Prefer strategic decision from the new agentic system.
+    decision_title = decision.get(
+        "title",
+        "",
     )
 
-    opportunities = decisions.get(
-        "opportunities",
-        [],
+    decision_description = decision.get(
+        "description",
+        "",
     )
 
-    recommendations = decisions.get(
-        "recommendations",
-        [],
+    recommended_action = decision.get(
+        "recommended_action",
+        "",
     )
 
-    if opportunities:
+    # Fallback to legacy decision data.
+    if not decision_title:
 
-        primary_opportunity = opportunities[0]
-
-        decision_title = primary_opportunity.get(
-            "title",
-            "Financial Optimization",
+        opportunities = decisions.get(
+            "opportunities",
+            [],
         )
 
-        decision_description = primary_opportunity.get(
-            "description",
-            "",
+        if opportunities:
+
+            first_opportunity = opportunities[0]
+
+            decision_title = first_opportunity.get(
+                "title",
+                "Monitor Financial Performance",
+            )
+
+            decision_description = first_opportunity.get(
+                "description",
+                "",
+            )
+
+        else:
+
+            decision_title = (
+                "Monitor Financial Performance"
+            )
+
+            decision_description = (
+                "Continue monitoring cash flow and major spending categories."
+            )
+
+    if not recommended_action:
+
+        recommendations = decisions.get(
+            "recommendations",
+            [],
         )
 
-    elif risks:
+        if recommendations:
 
-        primary_risk = risks[0]
+            recommended_action = recommendations[0]
 
-        decision_title = primary_risk.get(
-            "title",
-            "Financial Risk",
-        )
+        else:
 
-        decision_description = primary_risk.get(
-            "description",
-            "",
-        )
-
-    else:
-
-        decision_title = "Maintain Financial Discipline"
-
-        decision_description = (
-            "Your financial position is stable. "
-            "Continue monitoring cash flow and "
-            "major spending categories."
-        )
+            recommended_action = (
+                decision_description
+            )
 
     st.markdown(
         f"""
@@ -707,29 +694,31 @@ with decision_col:
                 {decision_description}
             </div>
 
+            <div class="recommended-label">
+                Recommended action
+            </div>
+
+            <div class="recommended-text">
+                {recommended_action}
+            </div>
+
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    if recommendations:
 
-        st.markdown(
-            "**Recommended action**"
-        )
+# ============================================================
+# FINANCIAL HEALTH
+# ============================================================
 
-        st.info(
-            recommendations[0]
-        )
-
-
-with health_col:
+with health_column:
 
     st.markdown(
         f"""
         <div class="health-card">
 
-            <div class="decision-label">
+            <div class="health-label">
                 Financial Health
             </div>
 
@@ -738,7 +727,7 @@ with health_col:
             </div>
 
             <div class="health-status">
-                ● {status}
+                ● {health_status}
             </div>
 
             <div class="metric-subtitle">
@@ -753,142 +742,33 @@ with health_col:
 
 
 # ============================================================
-# AGENT ACTIVITY
+# RECENT AGENT ACTIVITY
 # ============================================================
 
 st.markdown(
-    '<div class="section-title">'
-    'Recent Agent Activity'
-    '</div>',
+    "<div style='height:24px'></div>",
     unsafe_allow_html=True,
 )
 
-agent_col1, agent_col2 = st.columns(2)
+st.subheader("Recent Agent Activity")
 
-agent_items = list(
-    agent_status.items()
-)
 
-for index, (
-    agent_name,
-    info,
-) in enumerate(agent_items):
+# Count useful information from the real state.
 
-    target_col = (
-        agent_col1
-        if index % 2 == 0
-        else agent_col2
+transaction_count = len(df)
+
+risk_count = len(
+    risk.get(
+        "risks",
+        [],
     )
-
-    with target_col:
-
-        message = info.get(
-            "message",
-            "Completed",
-        )
-
-        is_complete = (
-            info.get("status")
-            == "complete"
-        )
-
-        icon = "✓" if is_complete else "⚠"
-
-        st.markdown(
-            f"""
-            <div class="agent-card">
-
-                <span class="agent-dot">
-                    {icon}
-                </span>
-
-                <span class="agent-name">
-                    {agent_name}
-                </span>
-
-                <div class="agent-message">
-                    {message}
-                </div>
-
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-
-# ============================================================
-# FINANCIAL TREND
-# ============================================================
-
-st.markdown(
-    '<div class="section-title">'
-    'Financial Trend'
-    '</div>',
-    unsafe_allow_html=True,
 )
 
-monthly = stats.get(
-    "monthly"
-)
-
-if monthly is not None and not monthly.empty:
-
-    chart_df = monthly.reset_index()
-
-    chart_df = chart_df.rename(
-        columns={
-            "month": "Month",
-            "income": "Revenue",
-            "expense": "Expenses",
-        }
+opportunity_count = len(
+    opportunity.get(
+        "opportunities",
+        [],
     )
-
-    available_columns = [
-        column
-        for column in [
-            "Revenue",
-            "Expenses",
-        ]
-        if column in chart_df.columns
-    ]
-
-    if available_columns:
-
-        fig = px.line(
-            chart_df,
-            x="Month",
-            y=available_columns,
-            markers=True,
-            template="plotly_white",
-        )
-
-        fig.update_layout(
-            height=360,
-            margin=dict(
-                l=10,
-                r=10,
-                t=20,
-                b=10,
-            ),
-            legend_title_text="",
-            hovermode="x unified",
-        )
-
-        st.plotly_chart(
-            fig,
-            use_container_width=True,
-        )
-
-
-# ============================================================
-# QUICK INSIGHTS
-# ============================================================
-
-st.markdown(
-    '<div class="section-title">'
-    'AI Findings'
-    '</div>',
-    unsafe_allow_html=True,
 )
 
 findings = decisions.get(
@@ -896,65 +776,197 @@ findings = decisions.get(
     [],
 )
 
-if findings:
+pattern_count = len(
+    findings
+)
 
-    finding_col1, finding_col2 = st.columns(2)
 
-    for index, finding in enumerate(
-        findings[:6]
-    ):
+activity_items = [
+    (
+        "Data Agent",
+        f"{transaction_count} transactions cleaned",
+    ),
+    (
+        "Analytics Agent",
+        f"{pattern_count} financial patterns analyzed",
+    ),
+    (
+        "Opportunity Agent",
+        f"{opportunity_count} opportunities identified",
+    ),
+    (
+        "Critic Agent",
+        (
+            "Decision verified"
+            if critic.get("approved", False)
+            else "Decision requires review"
+        ),
+    ),
+    (
+        "Categorization Agent",
+        f"{transaction_count} transactions classified",
+    ),
+    (
+        "Risk Agent",
+        f"{risk_count} risks detected",
+    ),
+    (
+        "Decision Agent",
+        decision_title,
+    ),
+    (
+        "Insight Agent",
+        "Financial briefing generated",
+    ),
+]
 
-        target_col = (
-            finding_col1
-            if index % 2 == 0
-            else finding_col2
-        )
 
-        with target_col:
+st.markdown(
+    '<div class="activity-container">',
+    unsafe_allow_html=True,
+)
 
-            finding_type = finding.get(
-                "type",
-                "Insight",
-            )
 
-            title = finding.get(
-                "title",
-                "Financial Finding",
-            )
+for agent_name, message in activity_items:
 
-            description = finding.get(
-                "description",
-                "",
-            )
+    st.markdown(
+        f"""
+        <div class="activity-row">
 
-            if finding_type == "Risk":
-                icon = "⚠️"
-            elif finding_type == "Opportunity":
-                icon = "💡"
-            elif finding_type == "Positive":
-                icon = "✓"
-            elif finding_type == "Vendor":
-                icon = "🏢"
-            elif finding_type == "Pattern":
-                icon = "🔎"
-            else:
-                icon = "📊"
+            <div class="agent-dot">
+                ✓
+            </div>
 
-            st.info(
-                f"{icon} **{title}**\n\n"
-                f"{description}"
-            )
+            <div>
+
+                <div class="agent-name">
+                    {agent_name}
+                </div>
+
+                <div class="agent-message">
+                    {message}
+                </div>
+
+            </div>
+
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+st.markdown(
+    "</div>",
+    unsafe_allow_html=True,
+)
 
 
 # ============================================================
-# FOOTER
+# FINANCIAL SNAPSHOT
 # ============================================================
 
 st.markdown(
-    """
-    <div class="footer">
-        FinTrack AI · Agentic Financial Analytics for SMBs
-    </div>
-    """,
+    "<div style='height:28px'></div>",
     unsafe_allow_html=True,
 )
+
+st.subheader("Financial Snapshot")
+
+snapshot_col1, snapshot_col2 = st.columns(2)
+
+
+# ------------------------------------------------------------
+# LARGEST EXPENSE
+# ------------------------------------------------------------
+
+with snapshot_col1:
+
+    by_category = stats.get(
+        "by_category"
+    )
+
+    if (
+        by_category is not None
+        and len(by_category) > 0
+    ):
+
+        largest_category = str(
+            by_category.index[0]
+        )
+
+        largest_amount = float(
+            by_category.iloc[0]
+        )
+
+        st.markdown(
+            f"""
+            <div class="finding">
+
+                <div class="finding-title">
+                    Largest Expense Category
+                </div>
+
+                <div class="finding-description">
+                    {largest_category}
+                    — ${largest_amount:,.2f}
+                </div>
+
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    else:
+
+        st.info(
+            "No expense category data available."
+        )
+
+
+# ------------------------------------------------------------
+# TOP VENDOR
+# ------------------------------------------------------------
+
+with snapshot_col2:
+
+    top_vendors = stats.get(
+        "top_vendors"
+    )
+
+    if (
+        top_vendors is not None
+        and len(top_vendors) > 0
+    ):
+
+        top_vendor = str(
+            top_vendors.index[0]
+        )
+
+        top_vendor_amount = float(
+            top_vendors.iloc[0]
+        )
+
+        st.markdown(
+            f"""
+            <div class="finding">
+
+                <div class="finding-title">
+                    Highest-Spend Vendor
+                </div>
+
+                <div class="finding-description">
+                    {top_vendor}
+                    — ${top_vendor_amount:,.2f}
+                </div>
+
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    else:
+
+        st.info(
+            "No vendor spending data available."
+        )
+
