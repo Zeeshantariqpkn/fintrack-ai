@@ -35,7 +35,6 @@ def run_decision_with_critique(
         revisions += 1
         revision_hint = critic.get("revision_required") or "Improve evidence and reasoning."
         if attempt >= MAX_REVISIONS - 1:
-            # Cap reached — accept final decision to avoid infinite loop
             critic = dict(critic)
             critic["status"] = "APPROVED"
             critic["approved"] = True
