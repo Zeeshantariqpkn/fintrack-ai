@@ -14,7 +14,6 @@ import numpy as np
 import pandas as pd
 
 
-# Column synonyms for robust CSV ingestion
 _DATE_ALIASES = {"date", "transaction_date", "txn_date", "posted_date", "posting_date", "time"}
 _DESC_ALIASES = {
     "description", "desc", "memo", "details", "narrative",
@@ -32,7 +31,6 @@ def _normalize_colname(name: str) -> str:
 
 
 def _map_columns(df: pd.DataFrame) -> Dict[str, str]:
-    """Return a mapping of original column -> logical name."""
     mapping: Dict[str, str] = {}
     for col in df.columns:
         norm = _normalize_colname(col)
@@ -46,7 +44,6 @@ def _map_columns(df: pd.DataFrame) -> Dict[str, str]:
 
 
 def _to_float(value: Any) -> Optional[float]:
-    """Parse a messy amount string into a float (or None)."""
     if value is None:
         return None
     if isinstance(value, (int, float)) and not isinstance(value, bool):
@@ -66,7 +63,6 @@ def _to_float(value: Any) -> Optional[float]:
         s = s[1:]
     elif s.startswith("+"):
         s = s[1:]
-    # strip trailing currency codes
     s = re.sub(r"[A-Za-z]+$", "", s)
     try:
         val = float(s)
@@ -76,15 +72,12 @@ def _to_float(value: Any) -> Optional[float]:
 
 
 def load_csv(source: Any) -> pd.DataFrame:
-    """
-    Load CSV from a path, file-like, or bytes. Raises ValueError on failure.
-    """
     try:
         if isinstance(source, bytes):
             df = pd.read_csv(io.BytesIO(source))
         else:
             df = pd.read_csv(source)
-    except Exception as exc:  # pragma: no cover - surface to UI
+    except Exception as exc:
         raise ValueError(f"Could not read CSV: {exc}") from exc
 
     if df.empty:
@@ -94,14 +87,6 @@ def load_csv(source: Any) -> pd.DataFrame:
 
 
 def process_transactions(df: pd.DataFrame) -> Dict[str, Any]:
-    """
-    Data Agent core routine.
-
-    Returns a dict with:
-      - df: cleaned DataFrame
-      - quality: data-quality report
-      - errors: list of issues encountered
-    """
     errors: List[str] = []
     original_rows = len(df)
 
@@ -117,37 +102,30 @@ def process_transactions(df: pd.DataFrame) -> Dict[str, Any]:
 
     df = df[list(REQUIRED_LOGICAL_COLUMNS)].copy()
 
-    # --- Parse dates -----------------------------------------------------
     parsed_dates = pd.to_datetime(df["date"], errors="coerce", utc=False)
     bad_dates = parsed_dates.isna().sum()
     if bad_dates:
         errors.append(f"Dropped {bad_dates} row(s) with unparseable dates.")
     df["date"] = parsed_dates
 
-    # --- Parse amounts ---------------------------------------------------
     df["amount"] = df["amount"].apply(_to_float)
     bad_amounts = df["amount"].isna().sum()
     if bad_amounts:
         errors.append(f"Dropped {bad_amounts} row(s) with invalid amounts.")
 
-    # --- Clean descriptions ---------------------------------------------
     df["description"] = (
         df["description"].astype(str).str.strip().replace({"nan": ""})
     )
     empty_desc = (df["description"] == "").sum()
 
-    # --- Drop invalid rows ----------------------------------------------
     df = df.dropna(subset=["date", "amount"]).reset_index(drop=True)
 
-    # --- Income vs expense ---------------------------------------------
     df["type"] = np.where(df["amount"] >= 0, "income", "expense")
     df["abs_amount"] = df["amount"].abs()
 
-    # --- Sort ------------------------------------------------------------
     df = df.sort_values("date").reset_index(drop=True)
     df["transaction_id"] = [f"TX{i+1:05d}" for i in range(len(df))]
 
-    # --- Quality report --------------------------------------------------
     dropped = original_rows - len(df)
     quality = {
         "original_rows": int(original_rows),
