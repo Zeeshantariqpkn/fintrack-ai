@@ -1,4 +1,10 @@
-"""Financial Insight and Chat Agent using Hugging Face with deterministic fallbacks."""
+"""
+Insight Agent for FinTrack AI.
+
+This agent takes financial analytics plus the output of the
+Decision Agent and turns them into a concise financial
+explanation for the business owner.
+"""
 
 import os
 
@@ -9,29 +15,58 @@ MODEL_NAME = "Qwen/Qwen2.5-7B-Instruct"
 
 
 def _stats_to_text(stats: dict) -> str:
-    """Convert calculated statistics into a compact text context."""
+    """Convert financial statistics into LLM-readable context."""
 
     lines = [
-        f"Total income: {stats['total_income']:.2f}",
-        f"Total expense: {stats['total_expense']:.2f}",
+        f"Total income: ${stats['total_income']:,.2f}",
+        f"Total expenses: ${stats['total_expense']:,.2f}",
     ]
 
-    # Spending by category
-    if stats["by_category"] is not None:
+    net_cash_flow = (
+        stats["total_income"]
+        - stats["total_expense"]
+    )
 
-        lines.append("Spend by category:")
+    lines.append(
+        f"Net cash flow: ${net_cash_flow:,.2f}"
+    )
 
-        for category, amount in stats[
-            "by_category"
-        ].items():
+    if stats["total_income"] > 0:
+
+        expense_ratio = (
+            stats["total_expense"]
+            / stats["total_income"]
+        ) * 100
+
+    else:
+
+        expense_ratio = 0
+
+    lines.append(
+        f"Expense ratio: {expense_ratio:.1f}%"
+    )
+
+    # Spending categories
+    if (
+        stats["by_category"] is not None
+        and len(stats["by_category"]) > 0
+    ):
+
+        lines.append(
+            "Spending by category:"
+        )
+
+        for category, amount in (
+            stats["by_category"].items()
+        ):
 
             lines.append(
-                f"- {category}: {amount:.2f}"
+                f"- {category}: ${amount:,.2f}"
             )
 
     # Monthly performance
     lines.append(
-        "Monthly income vs expense:"
+        "Monthly income and expenses:"
     )
 
     lines.append(
@@ -39,42 +74,119 @@ def _stats_to_text(stats: dict) -> str:
     )
 
     # Top vendors
-    lines.append(
-        "Top vendors by spend:"
-    )
-
-    for vendor, amount in stats[
-        "top_vendors"
-    ].items():
+    if len(stats["top_vendors"]) > 0:
 
         lines.append(
-            f"- {vendor}: {amount:.2f}"
+            "Top vendors/descriptions:"
         )
+
+        for vendor, amount in (
+            stats["top_vendors"].items()
+        ):
+
+            lines.append(
+                f"- {vendor}: ${amount:,.2f}"
+            )
 
     # Recurring expenses
     if len(stats["recurring"]) > 0:
 
         lines.append(
-            "Recurring charges:"
+            "Recurring expenses:"
         )
 
-        for description, count in stats[
-            "recurring"
-        ].items():
+        for description, count in (
+            stats["recurring"].items()
+        ):
 
             lines.append(
-                f"- {description}: seen in {count} months"
+                f"- {description}: "
+                f"appears in {count} months"
+            )
+
+    return "\n".join(lines)
+
+
+def _decision_to_text(
+    decision: dict,
+) -> str:
+    """Convert Decision Agent output into LLM context."""
+
+    lines = [
+        "Financial Health Score: "
+        f"{decision.get('health_score', 0)}/100",
+        "Financial Status: "
+        f"{decision.get('status', 'Unknown')}",
+        "Transaction Count: "
+        f"{decision.get('transaction_count', 0)}",
+    ]
+
+    # Risks
+    risks = decision.get(
+        "risks",
+        [],
+    )
+
+    if risks:
+
+        lines.append("Detected Risks:")
+
+        for risk in risks:
+
+            lines.append(
+                f"- {risk.get('title')}: "
+                f"{risk.get('description')}"
+            )
+
+    # Opportunities
+    opportunities = decision.get(
+        "opportunities",
+        [],
+    )
+
+    if opportunities:
+
+        lines.append(
+            "Detected Opportunities:"
+        )
+
+        for opportunity in opportunities:
+
+            lines.append(
+                f"- {opportunity.get('title')}: "
+                f"{opportunity.get('description')}"
+            )
+
+    # Recommendations
+    recommendations = decision.get(
+        "recommendations",
+        [],
+    )
+
+    if recommendations:
+
+        lines.append(
+            "Recommended Actions:"
+        )
+
+        for recommendation in recommendations:
+
+            lines.append(
+                f"- {recommendation}"
             )
 
     return "\n".join(lines)
 
 
 def _call_llm(prompt: str) -> str:
-    """Call Hugging Face. Return empty string if unavailable."""
+    """Call Hugging Face and safely handle failures."""
 
-    token = os.environ.get("HF_TOKEN")
+    token = os.environ.get(
+        "HF_TOKEN"
+    )
 
     if not token:
+
         return ""
 
     try:
@@ -91,7 +203,7 @@ def _call_llm(prompt: str) -> str:
                     "content": prompt,
                 }
             ],
-            max_tokens=500,
+            max_tokens=600,
             temperature=0.2,
         )
 
@@ -112,137 +224,185 @@ def _call_llm(prompt: str) -> str:
         return ""
 
 
-def _fallback_summary(stats: dict) -> str:
-    """Generate financial summary without an AI API."""
+def _fallback_summary(
+    stats: dict,
+    decision: dict,
+) -> str:
+    """
+    Generate a useful summary without an LLM.
 
-    income = stats["total_income"]
+    This guarantees the hackathon demo still works
+    if Hugging Face is unavailable.
+    """
 
-    expense = stats["total_expense"]
+    income = stats[
+        "total_income"
+    ]
+
+    expense = stats[
+        "total_expense"
+    ]
 
     net = income - expense
 
-    if income > 0:
+    expense_ratio = (
+        (expense / income) * 100
+        if income > 0
+        else 0
+    )
 
-        expense_ratio = (
-            expense / income
-        ) * 100
+    health_score = decision.get(
+        "health_score",
+        0,
+    )
 
-    else:
-
-        expense_ratio = 0
+    status = decision.get(
+        "status",
+        "Unknown",
+    )
 
     lines = [
-        "### Financial Overview",
-        f"- Total income: **${income:,.2f}**",
-        f"- Total expenses: **${expense:,.2f}**",
-        f"- Net cash flow: **${net:,.2f}**",
+        "### 🧠 FinTrack AI Decision Summary",
+        "",
         (
-            f"- Expense-to-income ratio: "
-            f"**{expense_ratio:.1f}%**"
+            f"**Financial health:** "
+            f"{health_score}/100 — {status}."
+        ),
+        (
+            f"Income is **${income:,.2f}** "
+            f"against expenses of "
+            f"**${expense:,.2f}**, producing "
+            f"net cash flow of **${net:,.2f}**."
+        ),
+        (
+            f"Expenses currently represent "
+            f"**{expense_ratio:.1f}%** of income."
         ),
     ]
 
-    # Financial health warning
-    if net < 0:
+    # Largest category
+    by_category = stats.get(
+        "by_category"
+    )
 
-        lines.append(
-            "⚠️ **Warning:** Expenses are higher than income."
-        )
-
-    elif expense_ratio > 80:
-
-        lines.append(
-            "⚠️ **Warning:** Expenses consume "
-            "a large portion of income."
-        )
-
-    else:
-
-        lines.append(
-            "✅ **Healthy sign:** Income currently "
-            "exceeds expenses."
-        )
-
-    # Highest category
     if (
-        stats["by_category"] is not None
-        and len(stats["by_category"]) > 0
+        by_category is not None
+        and len(by_category) > 0
     ):
 
-        category = (
-            stats["by_category"]
-            .index[0]
-        )
+        category = by_category.index[0]
 
-        amount = (
-            stats["by_category"]
-            .iloc[0]
-        )
+        amount = by_category.iloc[0]
 
         lines.append(
-            f"📊 Highest spending category: "
-            f"**{category} (${amount:,.2f})**"
+            f"The largest spending category is "
+            f"**{category}** at "
+            f"**${amount:,.2f}**."
         )
 
-    # Highest vendor
-    if len(stats["top_vendors"]) > 0:
+    # Risks
+    risks = decision.get(
+        "risks",
+        [],
+    )
 
-        vendor = (
-            stats["top_vendors"]
-            .index[0]
-        )
-
-        amount = (
-            stats["top_vendors"]
-            .iloc[0]
-        )
+    if risks:
 
         lines.append(
-            f"🏢 Highest-spend vendor: "
-            f"**{vendor} (${amount:,.2f})**"
+            f"⚠️ **Key risk:** "
+            f"{risks[0].get('description')}"
         )
 
-    # Recurring expenses
-    if len(stats["recurring"]) > 0:
+    # Opportunity
+    opportunities = decision.get(
+        "opportunities",
+        [],
+    )
+
+    if opportunities:
 
         lines.append(
-            f"🔁 Detected **{len(stats['recurring'])} "
-            f"recurring charges**."
+            f"💡 **Opportunity:** "
+            f"{opportunities[0].get('description')}"
+        )
+
+    # Recommendation
+    recommendations = decision.get(
+        "recommendations",
+        [],
+    )
+
+    if recommendations:
+
+        lines.append(
+            f"🎯 **Recommended action:** "
+            f"{recommendations[0]}"
         )
 
     return "\n".join(lines)
 
 
-def generate_summary(stats: dict) -> str:
-    """Generate an AI-powered financial summary."""
+def generate_summary(
+    stats: dict,
+    decision: dict | None = None,
+) -> str:
+    """
+    Generate an AI-powered financial decision summary.
+
+    The LLM receives BOTH:
+    1. Analytics Agent output
+    2. Decision Agent output
+    """
+
+    if decision is None:
+
+        decision = {}
 
     financial_context = _stats_to_text(
         stats
     )
 
-    prompt = f"""
-You are FinTrack AI, an AI financial analyst
-for small businesses.
+    decision_context = _decision_to_text(
+        decision
+    )
 
-Analyze ONLY the following computed financial
-statistics:
+    prompt = f"""
+You are FinTrack AI's Senior Financial
+Insight Agent.
+
+You are part of an agentic financial
+analysis pipeline.
+
+The Analytics Agent calculated:
 
 {financial_context}
 
-Write a concise 3-5 sentence financial health summary.
+The Decision Agent evaluated the data:
 
-Your response should mention:
+{decision_context}
 
-1. Cash flow
-2. Largest spending area
-3. One important risk or pattern
-4. One practical recommendation
+Your task is to explain the business situation
+to a small-business owner.
 
-Use actual numbers from the provided data.
+Produce a concise but useful financial briefing.
 
-Do NOT invent information.
+Include:
 
-Do NOT provide investment or legal advice.
+1. Overall financial health
+2. Most important spending pattern
+3. Biggest risk
+4. Best opportunity
+5. One practical action the owner should take
+
+Use the actual numbers provided.
+
+Do not invent information.
+
+Do not provide investment, tax, accounting,
+or legal advice.
+
+Make the answer easy for a non-financial expert
+to understand.
 """
 
     result = _call_llm(prompt)
@@ -251,39 +411,60 @@ Do NOT provide investment or legal advice.
 
         return result
 
-    return _fallback_summary(stats)
+    return _fallback_summary(
+        stats,
+        decision,
+    )
 
 
 def answer_question(
     stats: dict,
     question: str,
+    decision: dict | None = None,
 ) -> str:
-    """Answer a user's financial question."""
+    """
+    Answer a financial question using both
+    analytics and decision-agent context.
+    """
+
+    if decision is None:
+
+        decision = {}
 
     financial_context = _stats_to_text(
         stats
     )
 
-    prompt = f"""
-You are FinTrack AI, a financial analytics
-assistant for small businesses.
+    decision_context = _decision_to_text(
+        decision
+    )
 
-Answer the user's question using ONLY the
-following computed financial statistics:
+    prompt = f"""
+You are FinTrack AI's Financial Chat Agent.
+
+Analytics Agent output:
 
 {financial_context}
+
+Decision Agent output:
+
+{decision_context}
 
 User question:
 
 {question}
 
+Answer using ONLY the information above.
+
 Rules:
 
 - Be concise.
 - Use actual numbers.
+- Explain the reasoning clearly.
 - Never invent data.
-- Do not provide investment or legal advice.
-- If the requested information is unavailable,
+- Do not provide investment, tax,
+  accounting or legal advice.
+- If the information is unavailable,
   say so clearly.
 """
 
@@ -294,7 +475,7 @@ Rules:
         return result
 
     # ---------------------------------------
-    # Deterministic fallback answers
+    # Deterministic fallback
     # ---------------------------------------
 
     q = question.lower()
@@ -356,9 +537,13 @@ Rules:
         or "subscription" in q
     ):
 
+        count = len(
+            stats["recurring"]
+        )
+
         return (
-            f"I detected **{len(stats['recurring'])} "
-            f"recurring charges**."
+            f"I detected **{count} recurring "
+            f"expense patterns**."
         )
 
     # Cash flow
@@ -375,13 +560,56 @@ Rules:
         )
 
         return (
-            f"Your net cash flow is "
-            f"**${net:,.2f}** "
-            f"based on the available transactions."
+            f"Net cash flow is "
+            f"**${net:,.2f}**."
         )
 
+    # Financial health
+    if (
+        "health" in q
+        or "risk" in q
+    ):
+
+        score = decision.get(
+            "health_score",
+            0,
+        )
+
+        status = decision.get(
+            "status",
+            "Unknown",
+        )
+
+        return (
+            f"FinTrack AI's financial health "
+            f"score is **{score}/100** "
+            f"({status})."
+        )
+
+    # Recommendation
+    if (
+        "recommend" in q
+        or "recommendation" in q
+        or "should i" in q
+        or "what should" in q
+    ):
+
+        recommendations = decision.get(
+            "recommendations",
+            [],
+        )
+
+        if recommendations:
+
+            return (
+                "My main recommendation is: "
+                f"**{recommendations[0]}**"
+            )
+
     return (
-        "The AI model is unavailable right now. "
+        "I could not determine the answer "
+        "from the available financial data. "
         "Try asking about income, expenses, "
-        "vendors, recurring charges, or cash flow."
+        "vendors, recurring costs, cash flow, "
+        "financial health, risks, or recommendations."
     )
