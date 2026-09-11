@@ -1,3 +1,4 @@
+
 import streamlit as st
 
 from utils.financial_state import get_financial_state
@@ -11,7 +12,7 @@ st.set_page_config(
 
 
 # ============================================================
-# STYLE
+# CSS
 # ============================================================
 
 st.markdown(
@@ -24,112 +25,111 @@ st.markdown(
     }
 
     .hero {
-        background: linear-gradient(135deg, #f8fbff 0%, #eef6ff 100%);
-        border: 1px solid #dcecff;
-        border-radius: 18px;
-        padding: 28px 32px;
+        background: #f8fbff;
+        border: 1px solid #dbeafe;
+        border-radius: 16px;
+        padding: 26px 30px;
         margin-bottom: 24px;
     }
 
     .hero h1 {
         margin: 0;
         color: #0f172a;
-        font-size: 34px;
+        font-size: 32px;
         font-weight: 750;
     }
 
     .hero p {
-        margin: 8px 0 0 0;
+        margin: 7px 0 0;
         color: #64748b;
-        font-size: 15px;
+        font-size: 14px;
     }
 
     .agent-card {
         background: white;
         border: 1px solid #e2e8f0;
-        border-radius: 16px;
-        padding: 20px;
-        min-height: 170px;
-        box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+        border-radius: 14px;
+        padding: 18px;
+        min-height: 155px;
     }
 
     .agent-icon {
-        font-size: 25px;
+        font-size: 23px;
         margin-bottom: 8px;
     }
 
     .agent-name {
-        font-size: 17px;
+        font-size: 16px;
         font-weight: 700;
         color: #0f172a;
-        margin-bottom: 5px;
     }
 
     .agent-description {
         color: #64748b;
-        font-size: 13px;
+        font-size: 12px;
         line-height: 1.5;
+        margin-top: 5px;
     }
 
     .status {
         display: inline-block;
         margin-top: 12px;
-        padding: 5px 10px;
+        padding: 4px 9px;
         border-radius: 999px;
-        font-size: 11px;
+        font-size: 10px;
         font-weight: 700;
-    }
-
-    .status-complete {
         background: #ecfdf5;
         color: #047857;
     }
 
-    .status-active {
-        background: #eff6ff;
-        color: #1d4ed8;
-    }
-
-    .status-review {
-        background: #fff7ed;
-        color: #c2410c;
+    .flow-node {
+        background: white;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        padding: 10px 5px;
+        text-align: center;
+        font-size: 11px;
+        font-weight: 600;
+        color: #334155;
     }
 
     .evidence {
         background: #f8fafc;
-        border-left: 4px solid #2563eb;
-        border-radius: 8px;
-        padding: 12px 14px;
-        margin: 8px 0;
+        border-left: 3px solid #2563eb;
+        border-radius: 7px;
+        padding: 10px 12px;
+        margin: 7px 0;
         color: #334155;
-        font-size: 13px;
+        font-size: 12px;
     }
 
     .decision-box {
         background: #f8fbff;
         border: 1px solid #bfdbfe;
-        border-radius: 16px;
-        padding: 22px;
+        border-radius: 14px;
+        padding: 20px;
     }
 
     .decision-title {
-        font-size: 22px;
+        font-size: 20px;
         font-weight: 750;
         color: #0f172a;
     }
 
-    .decision-reason {
+    .decision-description {
         color: #475569;
-        line-height: 1.6;
-        margin-top: 8px;
+        margin-top: 7px;
+        line-height: 1.5;
+        font-size: 13px;
     }
 
     .approved {
         background: #ecfdf5;
         color: #047857;
         border: 1px solid #a7f3d0;
-        border-radius: 10px;
-        padding: 12px 16px;
+        border-radius: 9px;
+        padding: 10px 14px;
+        font-size: 13px;
         font-weight: 700;
         text-align: center;
     }
@@ -138,48 +138,40 @@ st.markdown(
         background: #fff7ed;
         color: #c2410c;
         border: 1px solid #fed7aa;
-        border-radius: 10px;
-        padding: 12px 16px;
+        border-radius: 9px;
+        padding: 10px 14px;
+        font-size: 13px;
         font-weight: 700;
         text-align: center;
     }
 
-    .metric-box {
-        background: white;
-        border: 1px solid #e2e8f0;
-        border-radius: 14px;
-        padding: 18px;
-        text-align: center;
+    .activity {
+        display: flex;
+        gap: 12px;
+        padding: 10px 0;
+        border-bottom: 1px solid #f1f5f9;
     }
 
-    .metric-value {
-        font-size: 28px;
-        font-weight: 750;
+    .activity-icon {
+        color: #16a34a;
+        font-weight: 700;
+        font-size: 15px;
+    }
+
+    .activity-title {
         color: #0f172a;
+        font-weight: 600;
+        font-size: 13px;
     }
 
-    .metric-label {
+    .activity-description {
         color: #64748b;
-        font-size: 12px;
-        margin-top: 3px;
+        font-size: 11px;
+        margin-top: 2px;
     }
 
-    .flow-node {
-        background: white;
-        border: 1px solid #dbeafe;
-        border-radius: 12px;
-        padding: 13px 8px;
-        text-align: center;
-        font-size: 12px;
-        font-weight: 650;
-        color: #334155;
-    }
-
-    .flow-arrow {
-        text-align: center;
-        font-size: 20px;
-        color: #94a3b8;
-        padding-top: 8px;
+    .section-space {
+        margin-top: 28px;
     }
     </style>
     """,
@@ -188,7 +180,7 @@ st.markdown(
 
 
 # ============================================================
-# LOAD STATE
+# LOAD FINANCIAL STATE
 # ============================================================
 
 state = get_financial_state()
@@ -199,9 +191,7 @@ if not state:
         <div class="hero">
             <h1>🤖 Agent Center</h1>
             <p>
-                Run a financial analysis from the Overview page first.
-                The Agent Center will then show the complete autonomous
-                reasoning pipeline.
+                Monitor the autonomous financial analysis agents.
             </p>
         </div>
         """,
@@ -209,8 +199,8 @@ if not state:
     )
 
     st.info(
-        "No financial analysis is available yet. "
-        "Go to Overview, upload a transaction CSV, and click "
+        "No analysis is available yet. "
+        "Go to Overview, upload your CSV, and click "
         "'Analyze Financials'."
     )
 
@@ -220,14 +210,15 @@ if not state:
 df = state["df"]
 stats = state["stats"]
 
-decisions = state.get("decisions", {})
-
 risk = state.get("risk", {})
 opportunity = state.get("opportunity", {})
 decision = state.get("decision", {})
 critic = state.get("critic", {})
 
-agent_status = state.get("agent_status", {})
+agent_status = state.get(
+    "agent_status",
+    {},
+)
 
 
 # ============================================================
@@ -239,8 +230,8 @@ st.markdown(
     <div class="hero">
         <h1>🤖 Agent Center</h1>
         <p>
-            Autonomous financial reasoning pipeline powered by
-            specialized AI agents.
+            Monitor how FinTrack AI analyzes, reasons and validates
+            financial decisions.
         </p>
     </div>
     """,
@@ -249,32 +240,30 @@ st.markdown(
 
 
 # ============================================================
-# PIPELINE
+# AGENT PIPELINE
 # ============================================================
 
-st.subheader("Autonomous Agent Pipeline")
+st.subheader("Agent Pipeline")
 
-flow = [
-    ("📥", "Raw Data"),
-    ("🧹", "Data Agent"),
-    ("🏷️", "Categorization"),
+pipeline = [
+    ("📥", "Data"),
+    ("🏷️", "Categorize"),
     ("📊", "Analytics"),
-    ("⚠️", "Risk Agent"),
+    ("⚠️", "Risk"),
     ("💡", "Opportunity"),
     ("🧠", "Decision"),
     ("🔍", "Critic"),
     ("✨", "Insight"),
 ]
 
-columns = st.columns(len(flow))
+columns = st.columns(len(pipeline))
 
-for column, (icon, name) in zip(columns, flow):
+for column, (icon, name) in zip(columns, pipeline):
     with column:
         st.markdown(
             f"""
             <div class="flow-node">
-                {icon}<br>
-                {name}
+                {icon}<br>{name}
             </div>
             """,
             unsafe_allow_html=True,
@@ -282,98 +271,104 @@ for column, (icon, name) in zip(columns, flow):
 
 
 # ============================================================
-# AGENT STATUS
+# AGENT EXECUTION
 # ============================================================
 
-st.markdown("")
+st.markdown("<div class='section-space'></div>", unsafe_allow_html=True)
+
 st.subheader("Agent Execution")
 
-agent_definitions = [
+agents = [
     (
         "📥",
         "Data Agent",
-        "Cleans, validates and normalizes uploaded financial data.",
+        "Cleans and validates financial transactions.",
         "data",
     ),
     (
         "🏷️",
         "Categorization Agent",
-        "Classifies transactions into meaningful financial categories.",
+        "Classifies transactions into financial categories.",
         "categorization",
     ),
     (
         "📊",
         "Analytics Agent",
-        "Calculates cash flow, spending patterns and financial metrics.",
+        "Calculates financial metrics and patterns.",
         "analytics",
     ),
     (
         "⚠️",
         "Risk Agent",
-        "Independently identifies financial risks using evidence.",
+        "Identifies financial risks from the data.",
         "risk",
     ),
     (
         "💡",
         "Opportunity Agent",
-        "Searches for savings, optimization and growth opportunities.",
+        "Finds savings and optimization opportunities.",
         "opportunity",
     ),
     (
         "🧠",
         "Decision Agent",
-        "Combines competing risk and opportunity signals into a decision.",
+        "Produces a strategic financial decision.",
         "decision",
     ),
     (
         "🔍",
         "Critic Agent",
-        "Reviews the decision and checks whether evidence supports it.",
+        "Reviews the decision against the evidence.",
         "critic",
     ),
     (
         "✨",
         "Insight Agent",
-        "Converts validated analysis into business-friendly insights.",
+        "Generates business-friendly financial insights.",
         "insight",
     ),
 ]
 
-for row_start in range(0, len(agent_definitions), 4):
-    row = agent_definitions[row_start:row_start + 4]
-    cols = st.columns(4)
+for start in range(0, len(agents), 4):
 
-    for col, (icon, name, description, key) in zip(cols, row):
-        with col:
-            status_value = agent_status.get(key, "Complete")
+    row = agents[start:start + 4]
+    columns = st.columns(4)
 
-            if isinstance(status_value, dict):
-                status_text = status_value.get(
+    for column, (
+        icon,
+        name,
+        description,
+        key,
+    ) in zip(columns, row):
+
+        with column:
+
+            status = agent_status.get(
+                key,
+                "Complete",
+            )
+
+            if isinstance(status, dict):
+                status = status.get(
                     "status",
                     "Complete",
                 )
-            else:
-                status_text = str(status_value)
-
-            status_lower = status_text.lower()
-
-            if "review" in status_lower:
-                status_class = "status-review"
-            elif "active" in status_lower:
-                status_class = "status-active"
-            else:
-                status_class = "status-complete"
 
             st.markdown(
                 f"""
                 <div class="agent-card">
                     <div class="agent-icon">{icon}</div>
-                    <div class="agent-name">{name}</div>
+
+                    <div class="agent-name">
+                        {name}
+                    </div>
+
                     <div class="agent-description">
                         {description}
                     </div>
-                    <span class="status {status_class}">
-                        ● {status_text}
+
+                    <span class="status">
+                        ✓ {status}
                     </span>
                 </div>
                 """,
@@ -382,69 +377,67 @@ for row_start in range(0, len(agent_definitions), 4):
 
 
 # ============================================================
-# STRATEGIC AGENTS
+# RISK + OPPORTUNITY
 # ============================================================
 
-st.markdown("")
-st.subheader("Strategic Reasoning")
+st.markdown("<div class='section-space'></div>", unsafe_allow_html=True)
 
-risk_col, opportunity_col = st.columns(2)
+st.subheader("Strategic Analysis")
+
+risk_column, opportunity_column = st.columns(2)
 
 
 # ------------------------------------------------------------
-# RISK AGENT
+# RISK
 # ------------------------------------------------------------
 
-with risk_col:
-
-    risk_score = risk.get("risk_score", 0)
-    risk_level = risk.get("risk_level", "Unknown")
+with risk_column:
 
     st.markdown("### ⚠️ Risk Agent")
 
-    metric_a, metric_b = st.columns(2)
+    risk_score = risk.get(
+        "risk_score",
+        0,
+    )
 
-    with metric_a:
-        st.markdown(
-            f"""
-            <div class="metric-box">
-                <div class="metric-value">
-                    {risk_score}
-                </div>
-                <div class="metric-label">
-                    Risk Score
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
+    risk_level = risk.get(
+        "risk_level",
+        "Unknown",
+    )
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.metric(
+            "Risk Score",
+            risk_score,
         )
 
-    with metric_b:
-        st.markdown(
-            f"""
-            <div class="metric-box">
-                <div class="metric-value">
-                    {risk_level}
-                </div>
-                <div class="metric-label">
-                    Risk Level
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
+    with col2:
+        st.metric(
+            "Risk Level",
+            risk_level,
         )
 
-    st.markdown("")
-
-    risks = risk.get("risks", [])
+    risks = risk.get(
+        "risks",
+        [],
+    )
 
     if risks:
+
         for item in risks:
-            title = item.get("title", "Risk")
+
+            title = item.get(
+                "title",
+                "Risk",
+            )
+
             description = item.get(
                 "description",
                 "",
             )
+
             severity = item.get(
                 "severity",
                 "Medium",
@@ -455,13 +448,12 @@ with risk_col:
                 <div class="evidence">
                     <strong>{title}</strong><br>
                     {description}<br>
-                    <small>
-                        Severity: <strong>{severity}</strong>
-                    </small>
+                    <small>Severity: {severity}</small>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
+
     else:
         st.success(
             "No significant financial risks detected."
@@ -469,10 +461,10 @@ with risk_col:
 
 
 # ------------------------------------------------------------
-# OPPORTUNITY AGENT
+# OPPORTUNITY
 # ------------------------------------------------------------
 
-with opportunity_col:
+with opportunity_column:
 
     st.markdown("### 💡 Opportunity Agent")
 
@@ -481,17 +473,15 @@ with opportunity_col:
         [],
     )
 
-    evidence = opportunity.get(
-        "evidence",
-        [],
-    )
-
     if opportunities:
+
         for item in opportunities:
+
             title = item.get(
                 "title",
                 "Opportunity",
             )
+
             description = item.get(
                 "description",
                 "",
@@ -506,35 +496,24 @@ with opportunity_col:
                 """,
                 unsafe_allow_html=True,
             )
+
     else:
         st.info(
             "No significant opportunities detected."
         )
 
-    if evidence:
-        st.markdown("**Supporting Evidence**")
-
-        for item in evidence:
-            st.markdown(
-                f"""
-                <div class="evidence">
-                    {item}
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
 
 # ============================================================
-# DECISION AGENT
+# DECISION
 # ============================================================
 
-st.markdown("")
+st.markdown("<div class='section-space'></div>", unsafe_allow_html=True)
+
 st.subheader("🧠 Strategic Decision")
 
 decision_title = decision.get(
     "title",
-    "No strategic decision generated",
+    "No decision generated",
 )
 
 decision_description = decision.get(
@@ -545,119 +524,46 @@ decision_description = decision.get(
     ),
 )
 
-decision_action = decision.get(
+recommended_action = decision.get(
     "recommended_action",
     "",
-)
-
-decision_confidence = decision.get(
-    "confidence",
-    None,
 )
 
 st.markdown(
     f"""
     <div class="decision-box">
+
         <div class="decision-title">
             {decision_title}
         </div>
 
-        <div class="decision-reason">
+        <div class="decision-description">
             {decision_description}
         </div>
 
         {
-            f'<div class="decision-reason"><strong>Recommended Action:</strong> {decision_action}</div>'
-            if decision_action
+            f'''
+            <div class="decision-description">
+                <strong>Recommended Action:</strong>
+                {recommended_action}
+            </div>
+            '''
+            if recommended_action
             else ""
         }
+
     </div>
     """,
     unsafe_allow_html=True,
 )
 
-if decision_confidence is not None:
-
-    try:
-        confidence_value = float(
-            decision_confidence
-        )
-
-        if confidence_value <= 1:
-            confidence_value *= 100
-
-        confidence_value = max(
-            0,
-            min(100, confidence_value),
-        )
-
-        st.progress(
-            confidence_value / 100,
-            text=(
-                f"Decision confidence: "
-                f"{confidence_value:.0f}%"
-            ),
-        )
-
-    except (
-        TypeError,
-        ValueError,
-    ):
-        pass
-
 
 # ============================================================
-# DECISION EVIDENCE
+# CRITIC
 # ============================================================
 
-decision_evidence = decision.get(
-    "evidence",
-    [],
-)
+st.markdown("<div class='section-space'></div>", unsafe_allow_html=True)
 
-if decision_evidence:
-
-    st.markdown("**Decision Evidence**")
-
-    evidence_columns = st.columns(
-        min(3, len(decision_evidence))
-    )
-
-    for column, item in zip(
-        evidence_columns,
-        decision_evidence,
-    ):
-        with column:
-            if isinstance(item, dict):
-                label = item.get(
-                    "label",
-                    item.get(
-                        "title",
-                        "Evidence",
-                    ),
-                )
-
-                value = item.get(
-                    "value",
-                    item.get(
-                        "description",
-                        "",
-                    ),
-                )
-
-                st.metric(
-                    label,
-                    value,
-                )
-            else:
-                st.info(str(item))
-
-
-# ============================================================
-# CRITIC AGENT
-# ============================================================
-
-st.markdown("")
 st.subheader("🔍 Critic / Review Agent")
 
 critic_verdict = str(
@@ -673,19 +579,22 @@ critic_approved = critic.get(
 )
 
 if critic_approved:
+
     st.markdown(
         """
         <div class="approved">
-            ✓ APPROVED — Decision supported by financial evidence
+            ✓ APPROVED — Decision supported by evidence
         </div>
         """,
         unsafe_allow_html=True,
     )
+
 else:
+
     st.markdown(
         """
         <div class="revise">
-            ↻ REVISE — Critic identified a weakness in the decision
+            ↻ REVISE — Decision requires further review
         </div>
         """,
         unsafe_allow_html=True,
@@ -701,63 +610,83 @@ critic_reasoning = critic.get(
 )
 
 if critic_reasoning:
-    st.markdown("**Review Reasoning**")
-    st.write(critic_reasoning)
+
+    st.markdown("**Review reasoning**")
+
+    st.write(
+        critic_reasoning
+    )
 
 
-critic_evidence = critic.get(
-    "evidence",
-    [],
-)
+# ============================================================
+# RECENT ACTIVITY
+# ============================================================
 
-if critic_evidence:
+st.markdown("<div class='section-space'></div>", unsafe_allow_html=True)
 
-    st.markdown("**Validation Evidence**")
+st.subheader("Recent Activity")
 
-    for item in critic_evidence:
+activities = [
+    (
+        "✓",
+        "Data Agent completed",
+        f"{len(df)} transactions cleaned",
+    ),
+    (
+        "✓",
+        "Categorization Agent completed",
+        f"{len(df)} transactions categorized",
+    ),
+    (
+        "✓",
+        "Analytics Agent completed",
+        "Financial patterns detected",
+    ),
+    (
+        "✓",
+        "Risk Agent completed",
+        "Risk assessment generated",
+    ),
+    (
+        "✓",
+        "Opportunity Agent completed",
+        "Optimization opportunities identified",
+    ),
+    (
+        "✓",
+        "Decision Agent completed",
+        "Strategic decision generated",
+    ),
+    (
+        "✓",
+        "Critic Agent completed",
+        "Decision reviewed",
+    ),
+]
 
-        if isinstance(item, dict):
-            title = item.get(
-                "title",
-                "Evidence",
-            )
-            description = item.get(
-                "description",
-                item.get(
-                    "value",
-                    "",
-                ),
-            )
+for icon, title, description in activities:
 
-            st.markdown(
-                f"""
-                <div class="evidence">
-                    <strong>{title}</strong><br>
+    st.markdown(
+        f"""
+        <div class="activity">
+
+            <div class="activity-icon">
+                {icon}
+            </div>
+
+            <div>
+                <div class="activity-title">
+                    {title}
+                </div>
+
+                <div class="activity-description">
                     {description}
                 </div>
-                """,
-                unsafe_allow_html=True,
-            )
+            </div>
 
-        else:
-            st.markdown(
-                f"""
-                <div class="evidence">
-                    {item}
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-
-revision_required = critic.get(
-    "revision_required",
-)
-
-if revision_required:
-
-    st.warning(
-        f"Revision required: {revision_required}"
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
 
@@ -765,8 +694,9 @@ if revision_required:
 # EVIDENCE SUMMARY
 # ============================================================
 
-st.markdown("")
-st.subheader("📌 Evidence Summary")
+st.markdown("<div class='section-space'></div>", unsafe_allow_html=True)
+
+st.subheader("Evidence Summary")
 
 income = float(
     stats.get(
@@ -790,124 +720,29 @@ expense_ratio = (
     else 0
 )
 
-transaction_count = len(df)
+col1, col2, col3, col4 = st.columns(4)
 
-m1, m2, m3, m4 = st.columns(4)
-
-with m1:
+with col1:
     st.metric(
         "Transactions",
-        f"{transaction_count:,}",
+        f"{len(df):,}",
     )
 
-with m2:
+with col2:
     st.metric(
         "Income",
         f"${income:,.2f}",
     )
 
-with m3:
+with col3:
     st.metric(
         "Expenses",
         f"${expense:,.2f}",
     )
 
-with m4:
+with col4:
     st.metric(
-        "Expense Ratio",
-        f"{expense_ratio:.1f}%",
+        "Net Cash Flow",
+        f"${net_cash_flow:,.2f}",
     )
 
-
-# ============================================================
-# REASONING CHAIN
-# ============================================================
-
-st.markdown("")
-st.subheader("🔗 Agent Reasoning Chain")
-
-reasoning_steps = [
-    (
-        "1",
-        "Data Agent",
-        "Validated and normalized the uploaded financial records.",
-    ),
-    (
-        "2",
-        "Categorization Agent",
-        "Classified transactions into financial categories.",
-    ),
-    (
-        "3",
-        "Analytics Agent",
-        "Calculated financial metrics and detected patterns.",
-    ),
-    (
-        "4",
-        "Risk Agent",
-        "Independently evaluated downside financial signals.",
-    ),
-    (
-        "5",
-        "Opportunity Agent",
-        "Independently searched for optimization opportunities.",
-    ),
-    (
-        "6",
-        "Decision Agent",
-        "Compared risk and opportunity signals and selected a strategic action.",
-    ),
-    (
-        "7",
-        "Critic Agent",
-        "Reviewed whether the decision was supported by evidence.",
-    ),
-    (
-        "8",
-        "Insight Agent",
-        "Converted validated results into business-facing insights.",
-    ),
-]
-
-for number, title, description in reasoning_steps:
-
-    left, right = st.columns(
-        [0.08, 0.92]
-    )
-
-    with left:
-        st.markdown(
-            f"""
-            <div style="
-                background:#eff6ff;
-                color:#1d4ed8;
-                border-radius:50%;
-                width:34px;
-                height:34px;
-                display:flex;
-                align-items:center;
-                justify-content:center;
-                font-weight:700;
-            ">
-                {number}
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    with right:
-        st.markdown(
-            f"""
-            <strong>{title}</strong><br>
-            <span style="color:#64748b;font-size:13px;">
-                {description}
-            </span>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    if number != "8":
-        st.markdown(
-            "<div style='height:8px'></div>",
-            unsafe_allow_html=True,
-        )
