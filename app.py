@@ -7,8 +7,16 @@ Overview dashboard. Additional pages live in pages/.
 from __future__ import annotations
 
 import os
+import sys
 import time
+from pathlib import Path
 from typing import Any, Dict
+
+# --- Ensure project root is importable (Streamlit Cloud runs pages from /pages) ---
+ROOT = Path(__file__).resolve().parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+# --------------------------------------------------------------------------------
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -24,7 +32,11 @@ from agents.strategic_agents import (
     run_risk_agent,
 )
 from utils.data_processing import load_csv, process_transactions
-from utils.financial_state import FinancialState
+from utils.financial_state import (
+    FinancialState,
+    get_financial_state,
+    reset_financial_state,
+)
 
 # ---------------------------------------------------------------------
 # Page config
@@ -68,12 +80,10 @@ html, body, [class*="css"] {
     max-width: 1280px;
 }
 
-/* Hide Streamlit chrome */
 #MainMenu {visibility: hidden;}
 footer {visibility: hidden;}
 header[data-testid="stHeader"] {background: transparent;}
 
-/* ---------- Sidebar ---------- */
 section[data-testid="stSidebar"] {
     background: #ffffff;
     border-right: 1px solid var(--ft-border);
@@ -116,7 +126,6 @@ section[data-testid="stSidebar"] > div { padding-top: 1.5rem; }
     50% { opacity: 0.5; }
 }
 
-/* ---------- Cards ---------- */
 .ft-card {
     background: var(--ft-bg);
     border: 1px solid var(--ft-border);
@@ -142,7 +151,6 @@ section[data-testid="stSidebar"] > div { padding-top: 1.5rem; }
 .ft-kpi-green { color: var(--ft-green); }
 .ft-kpi-red { color: var(--ft-red); }
 
-/* ---------- Headers ---------- */
 .ft-h1 {
     font-size: 1.9rem; font-weight: 800; color: var(--ft-navy);
     letter-spacing: -0.025em; margin: 0;
@@ -169,7 +177,6 @@ section[data-testid="stSidebar"] > div { padding-top: 1.5rem; }
     border: 1px solid rgba(239,68,68,0.25);
 }
 
-/* ---------- Decision card ---------- */
 .ft-decision {
     background: linear-gradient(135deg, #f8fbff 0%, #eef5ff 100%);
     border: 1px solid #cfe0ff;
@@ -199,7 +206,6 @@ section[data-testid="stSidebar"] > div { padding-top: 1.5rem; }
 }
 .ft-decision-mini .val { color: var(--ft-navy); font-size: 0.88rem; font-weight: 600; line-height: 1.45; }
 
-/* ---------- Timeline ---------- */
 .ft-timeline { position: relative; padding-left: 6px; }
 .ft-tl-item {
     display: flex; gap: 14px; padding: 12px 0;
@@ -217,7 +223,6 @@ section[data-testid="stSidebar"] > div { padding-top: 1.5rem; }
 .ft-tl-name { font-weight: 700; color: var(--ft-navy); font-size: 0.9rem; }
 .ft-tl-msg { color: var(--ft-slate); font-size: 0.83rem; margin-top: 2px; }
 
-/* ---------- Risk / Opportunity ---------- */
 .ft-item {
     border: 1px solid var(--ft-border); border-radius: 14px;
     padding: 16px 18px; background: #fff; margin-bottom: 12px;
@@ -234,7 +239,6 @@ section[data-testid="stSidebar"] > div { padding-top: 1.5rem; }
 .ft-sev-MEDIUM { background: rgba(245,158,11,0.12); color: #b45309; }
 .ft-sev-LOW { background: rgba(16,185,129,0.12); color: #047857; }
 
-/* ---------- Hero ---------- */
 .ft-hero {
     background: linear-gradient(135deg, #ffffff 0%, #f2f7ff 100%);
     border: 1px solid var(--ft-border);
@@ -249,7 +253,6 @@ section[data-testid="stSidebar"] > div { padding-top: 1.5rem; }
 }
 .ft-hero p { color: var(--ft-slate); font-size: 1rem; line-height: 1.6; margin: 0; max-width: 640px; }
 
-/* Buttons */
 .stButton > button {
     border-radius: 10px; font-weight: 600; border: 1px solid var(--ft-border);
     background: #fff; color: var(--ft-navy);
@@ -263,10 +266,8 @@ section[data-testid="stSidebar"] > div { padding-top: 1.5rem; }
 }
 .stButton > button[kind="primary"]:hover { box-shadow: 0 6px 20px rgba(37,99,235,0.36); }
 
-/* Dataframe */
 [data-testid="stDataFrame"] { border: 1px solid var(--ft-border); border-radius: 12px; overflow: hidden; }
 
-/* Tabs */
 .stTabs [data-baseweb="tab-list"] { gap: 6px; }
 .stTabs [data-baseweb="tab"] {
     border-radius: 9px 9px 0 0; font-weight: 600; color: var(--ft-slate);
@@ -281,13 +282,11 @@ st.markdown(CSS, unsafe_allow_html=True)
 # Session state helpers
 # ---------------------------------------------------------------------
 def _get_state() -> FinancialState:
-    if "fin_state" not in st.session_state:
-        st.session_state.fin_state = FinancialState()
-    return st.session_state.fin_state
+    return get_financial_state()
 
 
 def _reset_state() -> None:
-    st.session_state.fin_state = FinancialState()
+    reset_financial_state()
 
 
 def _set_config(key: str, value: Any) -> None:
@@ -339,17 +338,6 @@ def _run_pipeline(df_raw: pd.DataFrame, progress_placeholder) -> FinancialState:
     state = _get_state()
     config = _get_config()
     state.errors = []
-
-    steps = [
-        ("Data Agent", "Cleaning and validating transactions..."),
-        ("Categorization Agent", "Classifying transactions..."),
-        ("Analytics Agent", "Computing financial patterns..."),
-        ("Risk Agent", "Scanning for financial risks..."),
-        ("Opportunity Agent", "Searching for opportunities..."),
-        ("Decision Agent", "Making a strategic decision..."),
-        ("Critic Agent", "Independently verifying the decision..."),
-        ("Insight Agent", "Generating executive briefing..."),
-    ]
 
     # -------- Data Agent --------
     state.set_status("Data Agent", "running")
@@ -741,7 +729,6 @@ def render_overview(state: FinancialState) -> None:
     health_score = state.financial_health_score()
     health_label = state.health_label()
 
-    # -------- Header --------
     head_l, head_r = st.columns([3, 1])
     with head_l:
         st.markdown(
@@ -768,7 +755,6 @@ def render_overview(state: FinancialState) -> None:
 
     st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
 
-    # -------- KPI cards --------
     c1, c2, c3, c4 = st.columns(4)
     with c1:
         st.markdown(kpi_card(
@@ -796,7 +782,6 @@ def render_overview(state: FinancialState) -> None:
 
     st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
 
-    # -------- Health + Decision --------
     left, right = st.columns([1, 1.6])
 
     with left:
@@ -863,7 +848,6 @@ def render_overview(state: FinancialState) -> None:
 
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
 
-    # -------- Cash flow chart --------
     st.markdown('<div class="ft-kpi-label">Cash Flow Trend</div>', unsafe_allow_html=True)
     st.markdown('<div class="ft-card">', unsafe_allow_html=True)
     st.plotly_chart(
@@ -875,13 +859,11 @@ def render_overview(state: FinancialState) -> None:
 
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
 
-    # -------- Agent intelligence --------
     st.markdown('<div class="ft-kpi-label">Agent Intelligence</div>', unsafe_allow_html=True)
     _render_agent_timeline(state)
 
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
 
-    # -------- Risks + Opportunities preview --------
     st.markdown('<div class="ft-kpi-label">Risks & Opportunities</div>', unsafe_allow_html=True)
     rc, oc = st.columns(2)
     with rc:
@@ -960,7 +942,6 @@ def main() -> None:
     if not state.is_complete() and not st.session_state.get("analysis_done"):
         render_landing()
     elif not state.is_complete():
-        # Analysis attempted but incomplete
         render_landing()
     else:
         render_overview(state)
