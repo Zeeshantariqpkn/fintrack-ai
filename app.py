@@ -567,25 +567,25 @@ with decision_col2:
         "and recommended actions."
     )
 
-    st.markdown(
-        f"""
-        **Transactions analyzed:** {
-            decisions["transaction_count"]
-        }
+st.markdown(
+    f"""
+    **Transactions analyzed:** {
+        decisions["transaction_count"]
+    }
 
-        **Net cash flow:** ${
-            decisions["net_cash_flow"]:,.2f
-        }
+    **Net cash flow:** ${
+        decisions["net_cash_flow"]:,.2f
+    }
 
-        **Expense ratio:** {
-            decisions["expense_ratio"]:.1f
-        }%
+    **Expense ratio:** {
+        decisions["expense_ratio"]:.1f
+    }%
 
-        **Decision status:** {
-            decisions["status"]
-        }
-        """
-    )
+    **Decision status:** {
+        decisions["status"]
+    }
+    """
+)
 
     st.markdown(
         '</div>',
