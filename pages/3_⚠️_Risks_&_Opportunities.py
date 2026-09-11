@@ -3,10 +3,17 @@ Risks & Opportunities page — decision-oriented panels.
 """
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 import plotly.graph_objects as go
 import streamlit as st
 
-from utils.financial_state import FinancialState
+from utils.financial_state import FinancialState, get_financial_state
 
 st.set_page_config(page_title="Risks & Opportunities — FinTrack AI", page_icon="⚠️", layout="wide")
 
@@ -62,7 +69,7 @@ def _risk_gauge(score: int, level: str) -> go.Figure:
 
 
 def main() -> None:
-    state: FinancialState = st.session_state.get("fin_state", FinancialState())
+    state: FinancialState = get_financial_state()
 
     st.markdown('<div class="ft-h1">Risks & Opportunities</div>', unsafe_allow_html=True)
     st.markdown('<div class="ft-sub">Decision-oriented view of what could hurt you and what could help you.</div>',
@@ -73,7 +80,6 @@ def main() -> None:
         st.info("Run an analysis on the Overview page first.")
         return
 
-    # -------- Top row: risk score + opportunity score --------
     c1, c2 = st.columns([1, 1])
     with c1:
         st.markdown('<div class="ft-kpi-label">Risk Score</div>', unsafe_allow_html=True)
@@ -96,7 +102,6 @@ def main() -> None:
             unsafe_allow_html=True,
         )
 
-    # -------- Two-column: Risks | Opportunities --------
     st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
     left, right = st.columns(2)
 
@@ -144,7 +149,6 @@ def main() -> None:
                 unsafe_allow_html=True,
             )
 
-    # -------- Recommended actions --------
     if state.decision:
         st.markdown('<div class="ft-kpi-label">Recommended Actions (from Decision Agent)</div>',
                     unsafe_allow_html=True)
