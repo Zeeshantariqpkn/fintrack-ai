@@ -1,20 +1,23 @@
 """
 AI Financial Copilot.
 
-Answers user questions using ONLY the real financial state. When Hugging Face
-is available it uses Qwen2.5-7B-Instruct, otherwise a deterministic Q&A engine
-over the computed state. Financial numbers are always taken from the state —
-never invented.
+Answers user questions using ONLY the real financial state.
 """
 from __future__ import annotations
 
 import json
+import sys
+from pathlib import Path
 from typing import Any, Dict, List
+
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 import streamlit as st
 
 from agents.strategic_agents import call_hf, hf_available
-from utils.financial_state import FinancialState
+from utils.financial_state import FinancialState, get_financial_state
 
 st.set_page_config(page_title="AI Copilot — FinTrack AI", page_icon="💬", layout="wide")
 
@@ -32,9 +35,6 @@ CSS = """
     max-width:85%; font-size:.9rem; line-height:1.6; }
 .ft-msg-ai .src { color:#94a3b8; font-size:.75rem; margin-top:8px;
     border-top:1px dashed #e2e8f0; padding-top:8px; font-family:ui-monospace,Menlo,monospace; }
-.ft-suggest { display:inline-block; padding:8px 14px; border:1px solid #e2e8f0;
-    border-radius:999px; background:#fff; color:#334155; font-size:.82rem;
-    margin:4px 6px 4px 0; cursor:pointer; }
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
@@ -50,11 +50,7 @@ SUGGESTIONS = [
 ]
 
 
-# ---------------------------------------------------------------------
-# Deterministic Q&A fallback engine
-# ---------------------------------------------------------------------
 def _det_qa(question: str, state: FinancialState) -> Dict[str, Any]:
-    """Answer a question using only the computed financial state."""
     q = question.lower()
     s = state.stats
     r = state.risk
@@ -70,13 +66,9 @@ def _det_qa(question: str, state: FinancialState) -> Dict[str, Any]:
                 return e["interpretation"]
         return ""
 
-    # Expense ratio
     if "expense ratio" in q or ("expense" in q and "ratio" in q):
         interp = cite("expense_ratio")
-        answer = (
-            f"Your expense ratio is {s['expense_ratio']:.1f}%. "
-            f"{interp} "
-        )
+        answer = f"Your expense ratio is {s['expense_ratio']:.1f}%. {interp} "
         if s["expense_ratio"] > 60:
             answer += (
                 f"This is elevated. The largest category is {s.get('largest_category','—')} "
@@ -87,7 +79,6 @@ def _det_qa(question: str, state: FinancialState) -> Dict[str, Any]:
         citations.append(f"expense_ratio={s['expense_ratio']:.1f}%")
         return {"answer": answer, "citations": citations}
 
-    # Biggest risk
     if "risk" in q and ("biggest" in q or "largest" in q or "main" in q or "top" in q or "what is" in q):
         if not r.get("risks"):
             return {"answer": "The Risk Agent found no material risks in your financial data.",
@@ -101,20 +92,15 @@ def _det_qa(question: str, state: FinancialState) -> Dict[str, Any]:
         citations.append(top.get("evidence", ""))
         return {"answer": answer, "citations": citations}
 
-    # Where to reduce costs
     if "reduce" in q and ("cost" in q or "expense" in q or "spend" in q):
         if o.get("opportunities"):
             top = o["opportunities"][0]
-            answer = (
-                f"The highest-leverage cost reduction is **{top['title']}**: "
-                f"{top['description']}"
-            )
+            answer = f"The highest-leverage cost reduction is **{top['title']}**: {top['description']}"
             citations.extend(o.get("evidence", [])[:2])
         else:
             answer = "No major cost-reduction opportunities were detected."
         return {"answer": answer, "citations": citations}
 
-    # Vendor
     if "vendor" in q or "supplier" in q:
         if s.get("top_vendor"):
             answer = (
@@ -129,7 +115,6 @@ def _det_qa(question: str, state: FinancialState) -> Dict[str, Any]:
             answer = "No vendor-level data available."
         return {"answer": answer, "citations": citations}
 
-    # Healthy?
     if "healthy" in q or "health" in q or ("how" in q and "doing" in q):
         score = state.financial_health_score()
         label = state.health_label()
@@ -147,7 +132,6 @@ def _det_qa(question: str, state: FinancialState) -> Dict[str, Any]:
         citations.append(f"health_score={score}")
         return {"answer": answer, "citations": citations}
 
-    # Next month
     if "next month" in q or "what should i do" in q or "next step" in q:
         actions = d.get("recommended_actions", [])
         answer = f"Recommended next step: **{d.get('title', '—')}**. "
@@ -156,7 +140,6 @@ def _det_qa(question: str, state: FinancialState) -> Dict[str, Any]:
         answer += f" Expected impact: {d.get('expected_impact', '—')}."
         return {"answer": answer, "citations": [d.get("title", "")]}
 
-    # Why this decision
     if "why" in q and ("decision" in q or "recommend" in q):
         answer = (
             f"The Decision Agent recommended **{d.get('title', '—')}** because: "
@@ -167,7 +150,6 @@ def _det_qa(question: str, state: FinancialState) -> Dict[str, Any]:
         )
         return {"answer": answer, "citations": d.get("evidence", [])}
 
-    # Cash flow
     if "cash flow" in q or "cashflow" in q:
         answer = (
             f"Your net cash flow is **${s['net_cash_flow']:,.0f}** "
@@ -178,7 +160,6 @@ def _det_qa(question: str, state: FinancialState) -> Dict[str, Any]:
         citations.append(f"net_cash_flow={s['net_cash_flow']:.0f}")
         return {"answer": answer, "citations": citations}
 
-    # Default
     answer = (
         "I can answer questions about your revenue, expenses, cash flow, expense ratio, "
         "risks, opportunities, vendors, and the AI decision. "
@@ -190,9 +171,6 @@ def _det_qa(question: str, state: FinancialState) -> Dict[str, Any]:
     return {"answer": answer, "citations": []}
 
 
-# ---------------------------------------------------------------------
-# LLM-powered answer (with deterministic fallback)
-# ---------------------------------------------------------------------
 def answer_question(question: str, state: FinancialState) -> Dict[str, Any]:
     det = _det_qa(question, state)
 
@@ -237,11 +215,8 @@ def answer_question(question: str, state: FinancialState) -> Dict[str, Any]:
     return {"answer": text.strip(), "citations": det.get("citations", [])}
 
 
-# ---------------------------------------------------------------------
-# Page
-# ---------------------------------------------------------------------
 def main() -> None:
-    state: FinancialState = st.session_state.get("fin_state", FinancialState())
+    state: FinancialState = get_financial_state()
 
     st.markdown('<div class="ft-h1">AI Financial Copilot</div>', unsafe_allow_html=True)
     st.markdown(
@@ -257,7 +232,6 @@ def main() -> None:
     if "copilot_history" not in st.session_state:
         st.session_state.copilot_history = []
 
-    # Suggestion chips
     st.markdown("**Suggested questions**")
     cols = st.columns(3)
     for i, sug in enumerate(SUGGESTIONS):
@@ -267,7 +241,6 @@ def main() -> None:
 
     st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 
-    # Render history
     for turn in st.session_state.copilot_history:
         st.markdown(f'<div class="ft-msg-user">{turn["q"]}</div>', unsafe_allow_html=True)
         cites = "".join(f"<div>↳ {c}</div>" for c in turn.get("citations", []) if c)
@@ -278,7 +251,6 @@ def main() -> None:
             unsafe_allow_html=True,
         )
 
-    # Input
     question = st.chat_input("Ask about your finances…")
     if st.session_state.get("copilot_pending"):
         question = st.session_state.pop("copilot_pending")
