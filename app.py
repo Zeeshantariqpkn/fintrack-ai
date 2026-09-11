@@ -605,16 +605,14 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
 
-    st.page_link(
-        "app.py",
-        label="Overview",
-        icon="🏠",
-    )
+# Overview is app.py itself.
+# Do not use st.page_link("app.py") because the main entrypoint
+# cannot be referenced this way.
 
     st.page_link(
-        "pages/1_🤖_Agent_Center.py",
-        label="Agent Center",
-        icon="🤖",
+    "pages/1_🤖_Agent_Center.py",
+    label="Agent Center",
+    icon="🤖",
     )
 
     st.page_link(
