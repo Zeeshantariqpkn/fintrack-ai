@@ -1,13 +1,23 @@
-"""Transaction Categorization Agent using Hugging Face with a deterministic fallback."""
+"""
+Categorization Agent.
+
+Classifies every transaction into one of the fixed categories. Uses Hugging
+Face when HF_TOKEN is available; otherwise falls back to deterministic keyword
+matching. The category set is enforced — no invalid categories can escape.
+
+Categories:
+    Payroll, Vendors, Utilities, Marketing, Subscriptions, Rent, Income, Other
+"""
+from __future__ import annotations
 
 import json
-import os
+from typing import Any, Dict, List
 
 import pandas as pd
-from huggingface_hub import InferenceClient
 
+from agents.strategic_agents import call_hf, hf_available, _safe_json
 
-CATEGORIES = [
+CATEGORIES: List[str] = [
     "Payroll",
     "Vendors",
     "Utilities",
@@ -18,233 +28,165 @@ CATEGORIES = [
     "Other",
 ]
 
+_CATEGORY_SET = set(CATEGORIES)
 
-KEYWORD_MAP = {
-    "payroll": "Payroll",
-    "salary": "Payroll",
-
-    "rent": "Rent",
-
-    "electricity": "Utilities",
-    "water bill": "Utilities",
-    "water": "Utilities",
-    "internet": "Utilities",
-
-    "ads": "Marketing",
-    "campaign": "Marketing",
-    "facebook": "Marketing",
-    "instagram": "Marketing",
-    "google ads": "Marketing",
-
-    "subscription": "Subscriptions",
-    "zoom": "Subscriptions",
-    "slack": "Subscriptions",
-    "notion": "Subscriptions",
-    "adobe": "Subscriptions",
-
-    "vendor": "Vendors",
-    "supplies": "Vendors",
-    "aws": "Vendors",
-    "staples": "Vendors",
-    "techparts": "Vendors",
-    "paperplus": "Vendors",
-
-    "client payment": "Income",
+_KEYWORDS: Dict[str, List[str]] = {
+    "Payroll": [
+        "payroll", "salary", "salaries", "wage", "wages", "gusto", "adp",
+        "paychex", "compensation", "bonus", "contractor", "freelance",
+    ],
+    "Rent": ["rent", "lease", "wework", "office space", "property", "landlord"],
+    "Utilities": [
+        "utility", "utilities", "electric", "electricity", "water", "gas",
+        "internet", "pg&e", "pge", "comcast", "verizon", "at&t", "att",
+        "phone", "mobile",
+    ],
+    "Marketing": [
+        "ads", "advertising", "marketing", "google ads", "facebook ads",
+        "facebook", "meta ads", "instagram", "tiktok", "linkedin ads",
+        "campaign", "seo", "promotion", "hubspot", "mailchimp",
+    ],
+    "Subscriptions": [
+        "subscription", "notion", "slack", "figma", "adobe", "zoom",
+        "github", "dropbox", "spotify", "netflix", "saas", "license",
+        "creative cloud", "canva", "crm",
+    ],
+    "Vendors": [
+        "aws", "amazon web services", "azure", "gcp", "google cloud",
+        "hosting", "server", "cloud", "supplier", "vendor", "inventory",
+        "shipping", "logistics", "stripe fees", "paypal fees",
+    ],
+    "Income": [
+        "stripe payout", "payout", "revenue", "income", "sales", "invoice",
+        "customer", "client", "deposit", "shopify payout", "payment received",
+    ],
 }
 
 
-def _keyword_categorize(
-    description: str,
-    amount: float,
-) -> str:
+def _keyword_category(description: str, amount: float) -> tuple[str, float]:
+    """Deterministic fallback. Returns (category, confidence)."""
+    desc = (description or "").lower()
+    if amount >= 0 and not any(k in desc for k in _KEYWORDS["Income"]):
+        # Positive amounts default to Income unless clearly a refund category
+        return "Income", 0.55
 
-    # Positive transactions are income
-    if amount > 0:
-        return "Income"
+    best_cat = "Other"
+    best_score = 0
+    for cat, kws in _KEYWORDS.items():
+        for kw in kws:
+            if kw in desc:
+                score = len(kw.split()) * 2 + 1
+                if score > best_score:
+                    best_score = score
+                    best_cat = cat
 
-    description_lower = description.lower()
+    if best_cat == "Other":
+        # Amount sign as a weak signal
+        if amount >= 0:
+            return "Income", 0.4
+        return "Other", 0.35
 
-    for keyword, category in KEYWORD_MAP.items():
-
-        if keyword in description_lower:
-            return category
-
-    return "Other"
+    confidence = min(0.95, 0.55 + best_score * 0.08)
+    return best_cat, confidence
 
 
-def _call_llm_batch(
-    transactions: list[dict],
-) -> dict:
-
-    token = os.environ.get("HF_TOKEN")
-
-    if not token:
+def _llm_categorize_batch(batch: List[Dict[str, Any]]) -> Dict[str, str]:
+    """Ask the LLM to categorize a batch. Returns {transaction_id: category}."""
+    if not hf_available():
         return {}
-
-    try:
-
-        client = InferenceClient(
-            model="Qwen/Qwen2.5-7B-Instruct",
-            token=token,
-        )
-
-        prompt = f"""
-You are a financial transaction categorization agent.
-
-Categorize every transaction into exactly one
-of these allowed categories:
-
-{", ".join(CATEGORIES)}
-
-Transactions:
-
-{json.dumps(
-    transactions,
-    indent=2,
-    default=str
-)}
-
-Return ONLY valid JSON.
-
-The JSON must map each transaction ID
-to exactly one category.
-
-Example:
-
-{{
-    "0": "Payroll",
-    "1": "Vendors",
-    "2": "Marketing"
-}}
-
-Do not add explanations.
-Do not create new categories.
-"""
-
-        response = client.chat_completion(
-            messages=[
-                {
-                    "role": "user",
-                    "content": prompt,
-                }
-            ],
-            max_tokens=1000,
-            temperature=0.1,
-        )
-
-        text = response.choices[0].message.content.strip()
-
-        # Remove markdown code fences if the model adds them
-        text = text.replace(
-            "```json",
-            "",
-        )
-
-        text = text.replace(
-            "```",
-            "",
-        )
-
-        text = text.strip()
-
-        result = json.loads(text)
-
-        if isinstance(result, dict):
-            return result
-
+    prompt = (
+        "You are a financial transaction categorizer. Categorize each transaction "
+        "into EXACTLY ONE of these categories: "
+        f"{', '.join(CATEGORIES)}.\n"
+        "Respond ONLY with a JSON object mapping transaction_id to category.\n\n"
+        f"Transactions:\n{json.dumps(batch)[:3500]}\n\nJSON:"
+    )
+    text = call_hf(prompt, max_new_tokens=500, temperature=0.1)
+    parsed = _safe_json(text)
+    if not isinstance(parsed, dict):
         return {}
+    # Validate categories
+    cleaned: Dict[str, str] = {}
+    for k, v in parsed.items():
+        if isinstance(v, str):
+            for cat in CATEGORIES:
+                if cat.lower() == v.strip().lower():
+                    cleaned[str(k)] = cat
+                    break
+    return cleaned
 
-    except Exception as exc:
 
-        print(
-            f"[categorize] Hugging Face failed: {exc}"
-        )
-
-        return {}
-
-
-def categorize_transactions(
+def run_categorization_agent(
     df: pd.DataFrame,
-    batch_size: int = 25,
-    use_llm: bool = True,
-) -> pd.DataFrame:
-
+    use_ai: bool = True,
+    batch_size: int = 12,
+) -> Dict[str, Any]:
     """
-    Categorize financial transactions.
-
-    Hugging Face is used when HF_TOKEN is available.
-    If Hugging Face fails or is unavailable,
-    keyword-based categorization is used automatically.
+    Returns:
+        {
+            "df": DataFrame with 'category' and 'category_confidence',
+            "counts": {category: count},
+            "method": "ai" | "keyword" | "hybrid",
+            "classified": int,
+        }
     """
+    df = df.copy()
+    categories: List[str] = []
+    confidences: List[float] = []
+    used_ai = 0
+    used_kw = 0
 
-    df = df.reset_index(
-        drop=True
-    ).copy()
-
-    categories = [None] * len(df)
-
-    # ---------------------------------------
-    # Hugging Face categorization
-    # ---------------------------------------
-    if (
-        use_llm
-        and os.environ.get("HF_TOKEN")
-    ):
-
-        for start in range(
-            0,
-            len(df),
-            batch_size,
-        ):
-
-            batch = df.iloc[
-                start:start + batch_size
+    # Attempt AI on batched transactions
+    ai_map: Dict[str, str] = {}
+    if use_ai and hf_available():
+        for i in range(0, len(df), batch_size):
+            chunk = df.iloc[i : i + batch_size]
+            batch = [
+                {
+                    "transaction_id": row["transaction_id"],
+                    "description": str(row["description"])[:120],
+                    "amount": float(row["amount"]),
+                }
+                for _, row in chunk.iterrows()
             ]
+            ai_map.update(_llm_categorize_batch(batch))
 
-            payload = []
+    for _, row in df.iterrows():
+        tid = row["transaction_id"]
+        desc = str(row["description"])
+        amt = float(row["amount"])
 
-            for i, row in batch.iterrows():
+        kw_cat, kw_conf = _keyword_category(desc, amt)
 
-                payload.append(
-                    {
-                        "id": int(i),
-                        "description": row[
-                            "description"
-                        ],
-                        "amount": float(
-                            row["amount"]
-                        ),
-                    }
-                )
-
-            result = _call_llm_batch(
-                payload
-            )
-
-            for i in batch.index:
-
-                category = result.get(
-                    str(i)
-                )
-
-                if category in CATEGORIES:
-
-                    categories[i] = category
-
-    # ---------------------------------------
-    # Deterministic fallback
-    # ---------------------------------------
-    for i, row in df.iterrows():
-
-        if not categories[i]:
-
-            categories[i] = (
-                _keyword_categorize(
-                    row["description"],
-                    row["amount"],
-                )
-            )
+        if tid in ai_map:
+            categories.append(ai_map[tid])
+            confidences.append(0.85)
+            used_ai += 1
+        else:
+            categories.append(kw_cat)
+            confidences.append(kw_conf)
+            used_kw += 1
 
     df["category"] = categories
+    df["category_confidence"] = confidences
 
-    return df
+    # Enforce valid categories (safety net)
+    df["category"] = df["category"].apply(lambda c: c if c in _CATEGORY_SET else "Other")
+
+    counts = df["category"].value_counts().to_dict()
+
+    if used_ai and used_kw:
+        method = "hybrid"
+    elif used_ai:
+        method = "ai"
+    else:
+        method = "keyword"
+
+    return {
+        "df": df,
+        "counts": {str(k): int(v) for k, v in counts.items()},
+        "method": method,
+        "classified": int(len(df)),
+        "ai_classified": used_ai,
+        "keyword_classified": used_kw,
+    }
