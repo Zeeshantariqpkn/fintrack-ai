@@ -4,9 +4,6 @@ Categorization Agent.
 Classifies every transaction into one of the fixed categories. Uses Hugging
 Face when HF_TOKEN is available; otherwise falls back to deterministic keyword
 matching. The category set is enforced — no invalid categories can escape.
-
-Categories:
-    Payroll, Vendors, Utilities, Marketing, Subscriptions, Rent, Income, Other
 """
 from __future__ import annotations
 
@@ -67,7 +64,6 @@ def _keyword_category(description: str, amount: float) -> tuple[str, float]:
     """Deterministic fallback. Returns (category, confidence)."""
     desc = (description or "").lower()
     if amount >= 0 and not any(k in desc for k in _KEYWORDS["Income"]):
-        # Positive amounts default to Income unless clearly a refund category
         return "Income", 0.55
 
     best_cat = "Other"
@@ -81,7 +77,6 @@ def _keyword_category(description: str, amount: float) -> tuple[str, float]:
                     best_cat = cat
 
     if best_cat == "Other":
-        # Amount sign as a weak signal
         if amount >= 0:
             return "Income", 0.4
         return "Other", 0.35
@@ -105,7 +100,6 @@ def _llm_categorize_batch(batch: List[Dict[str, Any]]) -> Dict[str, str]:
     parsed = _safe_json(text)
     if not isinstance(parsed, dict):
         return {}
-    # Validate categories
     cleaned: Dict[str, str] = {}
     for k, v in parsed.items():
         if isinstance(v, str):
@@ -122,13 +116,7 @@ def run_categorization_agent(
     batch_size: int = 12,
 ) -> Dict[str, Any]:
     """
-    Returns:
-        {
-            "df": DataFrame with 'category' and 'category_confidence',
-            "counts": {category: count},
-            "method": "ai" | "keyword" | "hybrid",
-            "classified": int,
-        }
+    Returns a dict with the categorized DataFrame plus metadata.
     """
     df = df.copy()
     categories: List[str] = []
@@ -136,7 +124,6 @@ def run_categorization_agent(
     used_ai = 0
     used_kw = 0
 
-    # Attempt AI on batched transactions
     ai_map: Dict[str, str] = {}
     if use_ai and hf_available():
         for i in range(0, len(df), batch_size):
@@ -170,7 +157,6 @@ def run_categorization_agent(
     df["category"] = categories
     df["category_confidence"] = confidences
 
-    # Enforce valid categories (safety net)
     df["category"] = df["category"].apply(lambda c: c if c in _CATEGORY_SET else "Other")
 
     counts = df["category"].value_counts().to_dict()
