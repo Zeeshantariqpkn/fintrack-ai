@@ -3,11 +3,18 @@ Analytics page — deep dive into the financial data with Plotly charts.
 """
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from utils.financial_state import FinancialState
+from utils.financial_state import FinancialState, get_financial_state
 
 st.set_page_config(page_title="Analytics — FinTrack AI", page_icon="📊", layout="wide")
 
@@ -41,7 +48,7 @@ def _base_layout(fig, height=320, y_prefix=False):
 
 
 def main() -> None:
-    state: FinancialState = st.session_state.get("fin_state", FinancialState())
+    state: FinancialState = get_financial_state()
 
     st.markdown('<div class="ft-h1">Analytics</div>', unsafe_allow_html=True)
     st.markdown('<div class="ft-sub">Revenue, expenses, cash flow, categories, vendors, and recurring costs.</div>',
@@ -55,7 +62,6 @@ def main() -> None:
     s = state.stats
     df = state.df
 
-    # Mini KPI strip
     c1, c2, c3, c4 = st.columns(4)
     with c1:
         st.markdown(f'<div class="ft-card ft-mini">Revenue<div class="v">${s["total_revenue"]:,.0f}</div></div>',
@@ -72,7 +78,6 @@ def main() -> None:
 
     monthly = s["monthly"]
 
-    # Row 1: Revenue trend, Expense trend
     st.markdown('<div class="ft-kpi-label">Revenue & Expense Trends</div>', unsafe_allow_html=True)
     col1, col2 = st.columns(2)
     with col1:
@@ -103,7 +108,6 @@ def main() -> None:
         _base_layout(fig, y_prefix=True)
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
-    # Row 2: Cash flow + Expense by category
     st.markdown('<div class="ft-kpi-label">Cash Flow & Category Breakdown</div>', unsafe_allow_html=True)
     col1, col2 = st.columns(2)
     with col1:
@@ -140,7 +144,6 @@ def main() -> None:
         else:
             st.info("No expense categories available.")
 
-    # Row 3: Top vendors
     st.markdown('<div class="ft-kpi-label">Top Vendors by Spend</div>', unsafe_allow_html=True)
     vendors = s.get("vendor_totals", {})
     if vendors:
@@ -156,7 +159,6 @@ def main() -> None:
     else:
         st.info("No vendor data available.")
 
-    # Row 4: Recurring expenses + monthly comparison
     st.markdown('<div class="ft-kpi-label">Recurring Expenses & Monthly Comparison</div>', unsafe_allow_html=True)
     col1, col2 = st.columns([1, 1.2])
     with col1:
@@ -192,7 +194,6 @@ def main() -> None:
         _base_layout(fig, y_prefix=True)
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
-    # Transaction analysis table
     st.markdown('<div class="ft-kpi-label">Transaction Analysis</div>', unsafe_allow_html=True)
     summary = df.groupby("category").agg(
         transactions=("amount", "count"),
