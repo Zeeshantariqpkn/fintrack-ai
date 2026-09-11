@@ -1,1639 +1,970 @@
+"""
+FinTrack AI — main entry point.
+
+Streamlit app that orchestrates the agent pipeline and renders the premium
+Overview dashboard. Additional pages live in pages/.
+"""
+from __future__ import annotations
 
 import os
+import time
+from typing import Any, Dict
 
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from utils.financial_state import (
-    get_financial_state,
-    has_financial_state,
-    run_financial_analysis,
-    save_financial_state,
+from agents.categorize import run_categorization_agent
+from agents.decision import run_decision_with_critique
+from agents.insights import run_insight_agent
+from agents.strategic_agents import (
+    hf_available,
+    run_analytics_agent,
+    run_opportunity_agent,
+    run_risk_agent,
 )
+from utils.data_processing import load_csv, process_transactions
+from utils.financial_state import FinancialState
 
-
-# ============================================================
-# PAGE CONFIG
-# ============================================================
-
+# ---------------------------------------------------------------------
+# Page config
+# ---------------------------------------------------------------------
 st.set_page_config(
-    page_title="FinTrack AI",
-    page_icon="💰",
+    page_title="FinTrack AI — Agentic Financial Analytics",
+    page_icon="💠",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-
-# ============================================================
-# PREMIUM UI
-# ============================================================
-
-st.markdown(
-    """
-    <style>
-
-    /* ========================================================
-       GLOBAL
-    ======================================================== */
-
-    #MainMenu {
-        visibility: hidden;
-    }
-
-    footer {
-        visibility: hidden;
-    }
-
-    header {
-        background: transparent !important;
-    }
-
-    .block-container {
-        max-width: 1500px;
-        padding: 28px 42px 50px 42px;
-    }
-
-    html, body, [class*="css"] {
-        font-family:
-            Inter,
-            -apple-system,
-            BlinkMacSystemFont,
-            "Segoe UI",
-            sans-serif;
-    }
-
-    .stApp {
-        background: #f7f9fc;
-    }
-
-    /* ========================================================
-       SIDEBAR
-       ======================================================== */
-
-    section[data-testid="stSidebar"] {
-        background: #ffffff;
-        border-right: 1px solid #e8edf3;
-    }
-
-    section[data-testid="stSidebar"] > div {
-        padding-top: 25px;
-    }
-
-    .brand {
-        padding: 4px 12px 26px 12px;
-    }
-
-    .brand-row {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-    }
-
-    .brand-icon {
-        width: 38px;
-        height: 38px;
-        border-radius: 11px;
-        background: linear-gradient(
-            135deg,
-            #2563eb,
-            #4f46e5
-        );
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: white;
-        font-size: 19px;
-        font-weight: 800;
-    }
-
-    .brand-name {
-        color: #111827;
-        font-size: 18px;
-        font-weight: 800;
-        letter-spacing: -0.4px;
-    }
-
-    .brand-subtitle {
-        color: #94a3b8;
-        font-size: 10px;
-        margin-top: 1px;
-    }
-
-    .nav-label {
-        color: #94a3b8;
-        font-size: 10px;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        margin: 18px 12px 7px;
-    }
-
-    .sidebar-info {
-        background: #f8fafc;
-        border: 1px solid #edf1f5;
-        border-radius: 12px;
-        padding: 13px;
-        margin-top: 18px;
-    }
-
-    .sidebar-info-title {
-        color: #334155;
-        font-size: 11px;
-        font-weight: 700;
-    }
-
-    .sidebar-info-text {
-        color: #94a3b8;
-        font-size: 10px;
-        line-height: 1.5;
-        margin-top: 4px;
-    }
-
-    /* ========================================================
-       HEADER
-       ======================================================== */
-
-    .top-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-        margin-bottom: 26px;
-    }
-
-    .eyebrow {
-        color: #2563eb;
-        font-size: 11px;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        margin-bottom: 6px;
-    }
-
-    .page-title {
-        color: #111827;
-        font-size: 30px;
-        line-height: 1.1;
-        font-weight: 800;
-        letter-spacing: -1px;
-    }
-
-    .page-description {
-        color: #64748b;
-        font-size: 13px;
-        margin-top: 7px;
-    }
-
-    .status-pill {
-        display: inline-flex;
-        align-items: center;
-        gap: 7px;
-        background: #ecfdf5;
-        border: 1px solid #d1fae5;
-        color: #047857;
-        border-radius: 999px;
-        padding: 7px 12px;
-        font-size: 11px;
-        font-weight: 700;
-    }
-
-    .status-dot {
-        width: 7px;
-        height: 7px;
-        border-radius: 50%;
-        background: #10b981;
-    }
-
-    /* ========================================================
-       KPI CARDS
-       ======================================================== */
-
-    .kpi-card {
-        background: #ffffff;
-        border: 1px solid #e8edf3;
-        border-radius: 15px;
-        padding: 19px 20px;
-        min-height: 128px;
-        box-shadow:
-            0 1px 2px rgba(15, 23, 42, 0.02);
-    }
-
-    .kpi-top {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-    }
-
-    .kpi-label {
-        color: #64748b;
-        font-size: 11px;
-        font-weight: 600;
-    }
-
-    .kpi-icon {
-        width: 31px;
-        height: 31px;
-        border-radius: 9px;
-        background: #eff6ff;
-        color: #2563eb;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 14px;
-    }
-
-    .kpi-value {
-        color: #111827;
-        font-size: 25px;
-        font-weight: 800;
-        letter-spacing: -0.6px;
-        margin-top: 13px;
-    }
-
-    .kpi-caption {
-        color: #94a3b8;
-        font-size: 10px;
-        margin-top: 5px;
-    }
-
-    /* ========================================================
-       SECTION
-       ======================================================== */
-
-    .section-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        margin: 30px 0 13px;
-    }
-
-    .section-title {
-        color: #111827;
-        font-size: 16px;
-        font-weight: 750;
-        letter-spacing: -0.2px;
-    }
-
-    .section-caption {
-        color: #94a3b8;
-        font-size: 10px;
-    }
-
-    /* ========================================================
-       MAIN CARDS
-       ======================================================== */
-
-    .panel {
-        background: #ffffff;
-        border: 1px solid #e8edf3;
-        border-radius: 15px;
-        padding: 21px;
-        box-shadow:
-            0 1px 2px rgba(15, 23, 42, 0.02);
-    }
-
-    /* ========================================================
-       AI DECISION
-       ======================================================== */
-
-    .decision-panel {
-        background:
-            linear-gradient(
-                135deg,
-                #ffffff 0%,
-                #f8fbff 100%
-            );
-        border: 1px solid #dbeafe;
-        border-radius: 15px;
-        padding: 22px;
-        min-height: 245px;
-        position: relative;
-        overflow: hidden;
-    }
-
-    .decision-panel::after {
-        content: "";
-        position: absolute;
-        width: 150px;
-        height: 150px;
-        border-radius: 50%;
-        background: #eff6ff;
-        right: -70px;
-        top: -70px;
-        opacity: 0.8;
-    }
-
-    .decision-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        background: #eff6ff;
-        color: #2563eb;
-        border-radius: 999px;
-        padding: 6px 10px;
-        font-size: 10px;
-        font-weight: 750;
-        position: relative;
-        z-index: 1;
-    }
-
-    .decision-title {
-        color: #111827;
-        font-size: 22px;
-        font-weight: 800;
-        letter-spacing: -0.5px;
-        margin-top: 18px;
-        position: relative;
-        z-index: 1;
-    }
-
-    .decision-description {
-        color: #475569;
-        font-size: 13px;
-        line-height: 1.6;
-        max-width: 600px;
-        margin-top: 8px;
-        position: relative;
-        z-index: 1;
-    }
-
-    .action-label {
-        color: #111827;
-        font-size: 11px;
-        font-weight: 750;
-        margin-top: 20px;
-        position: relative;
-        z-index: 1;
-    }
-
-    .action-text {
-        color: #64748b;
-        font-size: 12px;
-        line-height: 1.5;
-        margin-top: 4px;
-        position: relative;
-        z-index: 1;
-    }
-
-    /* ========================================================
-       HEALTH
-       ======================================================== */
-
-    .health-panel {
-        background: #ffffff;
-        border: 1px solid #e8edf3;
-        border-radius: 15px;
-        padding: 21px;
-        min-height: 245px;
-    }
-
-    .health-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-    }
-
-    .health-label {
-        color: #64748b;
-        font-size: 11px;
-        font-weight: 650;
-    }
-
-    .health-tag {
-        color: #047857;
-        background: #ecfdf5;
-        border-radius: 999px;
-        padding: 5px 9px;
-        font-size: 9px;
-        font-weight: 750;
-    }
-
-    .health-score-row {
-        display: flex;
-        align-items: baseline;
-        gap: 6px;
-        margin-top: 22px;
-    }
-
-    .health-score {
-        color: #111827;
-        font-size: 48px;
-        line-height: 1;
-        font-weight: 850;
-        letter-spacing: -2px;
-    }
-
-    .health-max {
-        color: #94a3b8;
-        font-size: 13px;
-    }
-
-    .health-status {
-        color: #059669;
-        font-size: 12px;
-        font-weight: 750;
-        margin-top: 7px;
-    }
-
-    .health-description {
-        color: #94a3b8;
-        font-size: 10px;
-        line-height: 1.5;
-        margin-top: 14px;
-    }
-
-    /* ========================================================
-       ACTIVITY
-       ======================================================== */
-
-    .activity-panel {
-        background: #ffffff;
-        border: 1px solid #e8edf3;
-        border-radius: 15px;
-        padding: 19px 21px;
-    }
-
-    .activity-row {
-        display: flex;
-        gap: 12px;
-        position: relative;
-        padding: 9px 0;
-    }
-
-    .activity-row:not(:last-child)::before {
-        content: "";
-        position: absolute;
-        left: 6px;
-        top: 25px;
-        bottom: -4px;
-        width: 1px;
-        background: #e2e8f0;
-    }
-
-    .activity-icon {
-        width: 13px;
-        height: 13px;
-        min-width: 13px;
-        border-radius: 50%;
-        background: #ecfdf5;
-        border: 2px solid #34d399;
-        margin-top: 2px;
-        z-index: 2;
-    }
-
-    .activity-name {
-        color: #334155;
-        font-size: 11px;
-        font-weight: 700;
-    }
-
-    .activity-message {
-        color: #94a3b8;
-        font-size: 10px;
-        margin-top: 3px;
-    }
-
-    /* ========================================================
-       RISK / OPPORTUNITY
-       ======================================================== */
-
-    .insight-item {
-        border-bottom: 1px solid #f1f5f9;
-        padding: 13px 0;
-    }
-
-    .insight-item:last-child {
-        border-bottom: none;
-    }
-
-    .insight-title {
-        color: #334155;
-        font-size: 12px;
-        font-weight: 700;
-    }
-
-    .insight-text {
-        color: #64748b;
-        font-size: 10px;
-        line-height: 1.5;
-        margin-top: 4px;
-    }
-
-    .risk-badge {
-        display: inline-block;
-        color: #dc2626;
-        background: #fef2f2;
-        border-radius: 999px;
-        padding: 3px 7px;
-        font-size: 8px;
-        font-weight: 750;
-        margin-left: 5px;
-    }
-
-    .opportunity-badge {
-        display: inline-block;
-        color: #047857;
-        background: #ecfdf5;
-        border-radius: 999px;
-        padding: 3px 7px;
-        font-size: 8px;
-        font-weight: 750;
-        margin-left: 5px;
-    }
-
-    /* ========================================================
-       EMPTY STATE
-       ======================================================== */
-
-    .empty-panel {
-        background: #ffffff;
-        border: 1px solid #e8edf3;
-        border-radius: 18px;
-        padding: 70px 30px;
-        text-align: center;
-        margin-top: 20px;
-    }
-
-    .empty-icon {
-        font-size: 45px;
-        margin-bottom: 12px;
-    }
-
-    .empty-title {
-        color: #111827;
-        font-size: 22px;
-        font-weight: 800;
-    }
-
-    .empty-text {
-        color: #64748b;
-        font-size: 12px;
-        margin-top: 7px;
-    }
-
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-
-# ============================================================
-# SIDEBAR
-# ============================================================
-
-with st.sidebar:
-
-    st.markdown(
-        """
-        <div class="brand">
-            <div class="brand-row">
-                <div class="brand-icon">F</div>
-                <div>
-                    <div class="brand-name">FinTrack AI</div>
-                    <div class="brand-subtitle">
-                        Agentic Financial Intelligence
-                    </div>
-                </div>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.markdown(
-        '<div class="nav-label">Workspace</div>',
-        unsafe_allow_html=True,
-    )
-
-# Overview is app.py itself.
-# Do not use st.page_link("app.py") because the main entrypoint
-# cannot be referenced this way.
-
-    st.page_link(
-    "pages/1_🤖_Agent_Center.py",
-    label="Agent Center",
-    icon="🤖",
-    )
-
-    st.page_link(
-        "pages/2_📊_Analytics.py",
-        label="Analytics",
-        icon="📊",
-    )
-
-    st.page_link(
-        "pages/3_⚠️_Risks_&_Opportunities.py",
-        label="Risks & Opportunities",
-        icon="⚠️",
-    )
-
-    st.markdown(
-        '<div class="nav-label">AI</div>',
-        unsafe_allow_html=True,
-    )
-
-    st.page_link(
-        "pages/4_💬_AI_Copilot.py",
-        label="Financial Copilot",
-        icon="💬",
-    )
-
-    st.markdown(
-        '<div class="nav-label">Data</div>',
-        unsafe_allow_html=True,
-    )
-
-    st.page_link(
-        "pages/5_📁_Transactions.py",
-        label="Transactions",
-        icon="📁",
-    )
-
-    st.markdown(
-        '<div class="nav-label">System</div>',
-        unsafe_allow_html=True,
-    )
-
-    st.page_link(
-        "pages/6_⚙️_Settings.py",
-        label="Settings",
-        icon="⚙️",
-    )
-
-    st.markdown(
-        """
-        <div class="sidebar-info">
-            <div class="sidebar-info-title">
-                AI Engine
-            </div>
-            <div class="sidebar-info-text">
-                Multi-agent financial reasoning with
-                risk, opportunity, decision and critic agents.
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.markdown("")
-
-    st.markdown(
-        '<div class="nav-label">Upload Data</div>',
-        unsafe_allow_html=True,
-    )
-
-    uploaded_file = st.file_uploader(
-        "Transaction CSV",
-        type=["csv"],
-        label_visibility="collapsed",
-    )
-
-    hf_token = st.text_input(
-        "Hugging Face Token",
-        type="password",
-        value=os.environ.get("HF_TOKEN", ""),
-        placeholder="HF token (optional)",
-    )
-
-    use_llm = st.checkbox(
-        "Use AI categorization",
-        value=True,
-    )
-
-    analyze = st.button(
-        "Analyze Financials",
-        type="primary",
-        use_container_width=True,
-    )
-
-
-# ============================================================
-# HF TOKEN
-# ============================================================
-
-if hf_token:
-    os.environ["HF_TOKEN"] = hf_token
-
-
-# ============================================================
-# ANALYZE
-# ============================================================
-
-if analyze:
-
-    if uploaded_file is None:
-
-        st.error(
-            "Upload a transaction CSV before starting the analysis."
-        )
-
-    else:
-
-        with st.spinner(
-            "FinTrack AI agents are analyzing your financial data..."
-        ):
-
-            try:
-
-                state = run_financial_analysis(
-                    uploaded_file,
-                    use_llm=use_llm,
-                )
-
-                save_financial_state(state)
-
-                st.rerun()
-
-            except Exception as exc:
-
-                st.error(
-                    f"Analysis failed: {exc}"
-                )
-
-
-# ============================================================
-# EMPTY STATE
-# ============================================================
-
-if not has_financial_state():
-
-    st.markdown(
-        """
-        <div class="top-header">
-
-            <div>
-                <div class="eyebrow">
-                    FINANCIAL INTELLIGENCE
-                </div>
-
-                <div class="page-title">
-                    Business Overview
-                </div>
-
-                <div class="page-description">
-                    Understand your financial performance with
-                    autonomous AI analysis.
-                </div>
-            </div>
-
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.markdown(
-        """
-        <div class="empty-panel">
-
-            <div class="empty-icon">
-                📊
-            </div>
-
-            <div class="empty-title">
-                Your financial workspace is ready
-            </div>
-
-            <div class="empty-text">
-                Upload a transaction CSV from the sidebar to
-                start your AI-powered financial analysis.
-            </div>
-
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.stop()
-
-
-# ============================================================
-# LOAD STATE
-# ============================================================
-
-state = get_financial_state()
-
-df = state["df"]
-stats = state["stats"]
-
-decisions = state.get(
-    "decisions",
-    {},
-)
-
-risk = state.get(
-    "risk",
-    {},
-)
-
-opportunity = state.get(
-    "opportunity",
-    {},
-)
-
-decision = state.get(
-    "decision",
-    {},
-)
-
-critic = state.get(
-    "critic",
-    {},
-)
-
-
-# ============================================================
-# FINANCIAL VALUES
-# ============================================================
-
-income = float(
-    stats.get(
-        "total_income",
-        0,
-    )
-)
-
-expenses = float(
-    stats.get(
-        "total_expense",
-        0,
-    )
-)
-
-net_cash_flow = income - expenses
-
-expense_ratio = (
-    expenses / income * 100
-    if income > 0
-    else 0
-)
-
-health_score = int(
-    decisions.get(
-        "health_score",
-        0,
-    )
-)
-
-health_status = decisions.get(
-    "status",
-    "Unknown",
-)
-
-
-# ============================================================
-# DECISION
-# ============================================================
-
-decision_title = decision.get(
-    "title",
-    "",
-)
-
-decision_description = decision.get(
-    "description",
-    "",
-)
-
-recommended_action = decision.get(
-    "recommended_action",
-    "",
-)
-
-
-if not decision_title:
-
-    opportunities = decisions.get(
-        "opportunities",
-        [],
-    )
-
-    if opportunities:
-
-        first = opportunities[0]
-
-        decision_title = first.get(
-            "title",
-            "Monitor Financial Performance",
-        )
-
-        decision_description = first.get(
-            "description",
-            "",
-        )
-
-    else:
-
-        decision_title = (
-            "Monitor Financial Performance"
-        )
-
-        decision_description = (
-            "Continue monitoring cash flow and major spending categories."
-        )
-
-
-if not recommended_action:
-
-    recommendations = decisions.get(
-        "recommendations",
-        [],
-    )
-
-    if recommendations:
-
-        recommended_action = recommendations[0]
-
-    else:
-
-        recommended_action = decision_description
-
-
-# ============================================================
-# HEADER
-# ============================================================
-
-st.markdown(
-    f"""
-    <div class="top-header">
-
-        <div>
-
-            <div class="eyebrow">
-                FINANCIAL INTELLIGENCE
-            </div>
-
-            <div class="page-title">
-                Business Overview
-            </div>
-
-            <div class="page-description">
-                Your AI agents have analyzed
-                {len(df):,} financial transactions.
-            </div>
-
-        </div>
-
-        <div class="status-pill">
-            <span class="status-dot"></span>
-            AI Analysis Complete
-        </div>
-
+# ---------------------------------------------------------------------
+# Design system — premium white/blue SaaS
+# ---------------------------------------------------------------------
+CSS = """
+<style>
+:root {
+    --ft-blue: #2563eb;
+    --ft-blue-soft: #eff6ff;
+    --ft-navy: #0f172a;
+    --ft-slate: #475569;
+    --ft-muted: #94a3b8;
+    --ft-border: #e2e8f0;
+    --ft-bg: #ffffff;
+    --ft-bg-soft: #f8fafc;
+    --ft-green: #10b981;
+    --ft-amber: #f59e0b;
+    --ft-red: #ef4444;
+    --ft-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 16px rgba(15, 23, 42, 0.06);
+    --ft-shadow-lg: 0 4px 12px rgba(15, 23, 42, 0.06), 0 16px 40px rgba(15, 23, 42, 0.08);
+}
+
+html, body, [class*="css"] {
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
+    color: var(--ft-navy);
+}
+
+.main .block-container {
+    padding-top: 1.5rem;
+    padding-bottom: 3rem;
+    max-width: 1280px;
+}
+
+/* Hide Streamlit chrome */
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
+header[data-testid="stHeader"] {background: transparent;}
+
+/* ---------- Sidebar ---------- */
+section[data-testid="stSidebar"] {
+    background: #ffffff;
+    border-right: 1px solid var(--ft-border);
+}
+section[data-testid="stSidebar"] > div { padding-top: 1.5rem; }
+
+.ft-brand {
+    display: flex; align-items: center; gap: 10px;
+    font-weight: 800; font-size: 1.15rem; letter-spacing: -0.02em;
+    color: var(--ft-navy);
+}
+.ft-brand .dot {
+    width: 30px; height: 30px; border-radius: 9px;
+    background: linear-gradient(135deg, #2563eb, #3b82f6);
+    display: flex; align-items: center; justify-content: center;
+    color: white; font-size: 0.85rem; font-weight: 700;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+}
+.ft-tagline {
+    color: var(--ft-muted); font-size: 0.78rem; margin-top: 2px;
+    letter-spacing: 0.02em; text-transform: uppercase; font-weight: 600;
+}
+.ft-divider {
+    height: 1px; background: var(--ft-border); margin: 1.1rem 0;
+}
+.ft-status {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 0.82rem; color: var(--ft-slate); font-weight: 600;
+    padding: 8px 12px; border-radius: 10px;
+    background: var(--ft-bg-soft); border: 1px solid var(--ft-border);
+}
+.ft-status .pulse {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--ft-green);
+    box-shadow: 0 0 0 3px rgba(16,185,129,0.18);
+    animation: pulse 2s infinite;
+}
+@keyframes pulse {
+    0%,100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+/* ---------- Cards ---------- */
+.ft-card {
+    background: var(--ft-bg);
+    border: 1px solid var(--ft-border);
+    border-radius: 16px;
+    padding: 20px 22px;
+    box-shadow: var(--ft-shadow);
+    transition: box-shadow .2s ease, transform .2s ease;
+}
+.ft-card:hover { box-shadow: var(--ft-shadow-lg); }
+
+.ft-kpi-label {
+    font-size: 0.76rem; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--ft-muted); font-weight: 700; margin-bottom: 8px;
+}
+.ft-kpi-value {
+    font-size: 1.7rem; font-weight: 800; color: var(--ft-navy);
+    letter-spacing: -0.02em; line-height: 1.1;
+}
+.ft-kpi-sub {
+    font-size: 0.8rem; color: var(--ft-slate); margin-top: 6px;
+}
+.ft-kpi-accent { color: var(--ft-blue); }
+.ft-kpi-green { color: var(--ft-green); }
+.ft-kpi-red { color: var(--ft-red); }
+
+/* ---------- Headers ---------- */
+.ft-h1 {
+    font-size: 1.9rem; font-weight: 800; color: var(--ft-navy);
+    letter-spacing: -0.025em; margin: 0;
+}
+.ft-sub { color: var(--ft-slate); font-size: 0.95rem; margin-top: 4px; }
+
+.ft-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 11px; border-radius: 999px;
+    font-size: 0.75rem; font-weight: 700; letter-spacing: 0.02em;
+    background: rgba(16,185,129,0.1); color: #047857;
+    border: 1px solid rgba(16,185,129,0.22);
+}
+.ft-badge-blue {
+    background: var(--ft-blue-soft); color: var(--ft-blue);
+    border: 1px solid rgba(37,99,235,0.2);
+}
+.ft-badge-amber {
+    background: rgba(245,158,11,0.1); color: #b45309;
+    border: 1px solid rgba(245,158,11,0.25);
+}
+.ft-badge-red {
+    background: rgba(239,68,68,0.1); color: #b91c1c;
+    border: 1px solid rgba(239,68,68,0.25);
+}
+
+/* ---------- Decision card ---------- */
+.ft-decision {
+    background: linear-gradient(135deg, #f8fbff 0%, #eef5ff 100%);
+    border: 1px solid #cfe0ff;
+    border-radius: 18px;
+    padding: 24px 26px;
+    box-shadow: var(--ft-shadow-lg);
+}
+.ft-decision-label {
+    font-size: 0.72rem; font-weight: 800; letter-spacing: 0.12em;
+    color: var(--ft-blue); text-transform: uppercase; margin-bottom: 8px;
+}
+.ft-decision-title {
+    font-size: 1.35rem; font-weight: 800; color: var(--ft-navy);
+    letter-spacing: -0.02em; margin-bottom: 10px;
+}
+.ft-decision-body { color: var(--ft-slate); font-size: 0.92rem; line-height: 1.55; }
+.ft-decision-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 18px;
+}
+.ft-decision-mini {
+    background: #fff; border: 1px solid var(--ft-border);
+    border-radius: 12px; padding: 14px 16px;
+}
+.ft-decision-mini .lbl {
+    font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em;
+    color: var(--ft-muted); text-transform: uppercase; margin-bottom: 6px;
+}
+.ft-decision-mini .val { color: var(--ft-navy); font-size: 0.88rem; font-weight: 600; line-height: 1.45; }
+
+/* ---------- Timeline ---------- */
+.ft-timeline { position: relative; padding-left: 6px; }
+.ft-tl-item {
+    display: flex; gap: 14px; padding: 12px 0;
+    border-bottom: 1px dashed var(--ft-border);
+}
+.ft-tl-item:last-child { border-bottom: none; }
+.ft-tl-icon {
+    width: 30px; height: 30px; border-radius: 9px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.85rem; font-weight: 700;
+    background: rgba(16,185,129,0.12); color: #047857;
+}
+.ft-tl-icon.pending { background: var(--ft-bg-soft); color: var(--ft-muted); }
+.ft-tl-icon.revise { background: rgba(245,158,11,0.14); color: #b45309; }
+.ft-tl-name { font-weight: 700; color: var(--ft-navy); font-size: 0.9rem; }
+.ft-tl-msg { color: var(--ft-slate); font-size: 0.83rem; margin-top: 2px; }
+
+/* ---------- Risk / Opportunity ---------- */
+.ft-item {
+    border: 1px solid var(--ft-border); border-radius: 14px;
+    padding: 16px 18px; background: #fff; margin-bottom: 12px;
+    box-shadow: var(--ft-shadow);
+}
+.ft-item-title { font-weight: 700; color: var(--ft-navy); font-size: 0.95rem; }
+.ft-item-desc { color: var(--ft-slate); font-size: 0.86rem; margin-top: 6px; line-height: 1.5; }
+.ft-sev {
+    display: inline-block; padding: 3px 9px; border-radius: 999px;
+    font-size: 0.7rem; font-weight: 700; letter-spacing: 0.04em;
+    margin-left: 8px;
+}
+.ft-sev-HIGH { background: rgba(239,68,68,0.12); color: #b91c1c; }
+.ft-sev-MEDIUM { background: rgba(245,158,11,0.12); color: #b45309; }
+.ft-sev-LOW { background: rgba(16,185,129,0.12); color: #047857; }
+
+/* ---------- Hero ---------- */
+.ft-hero {
+    background: linear-gradient(135deg, #ffffff 0%, #f2f7ff 100%);
+    border: 1px solid var(--ft-border);
+    border-radius: 20px;
+    padding: 40px 44px;
+    box-shadow: var(--ft-shadow);
+    margin-bottom: 22px;
+}
+.ft-hero h1 {
+    font-size: 2.2rem; font-weight: 800; color: var(--ft-navy);
+    letter-spacing: -0.03em; margin: 0 0 8px 0;
+}
+.ft-hero p { color: var(--ft-slate); font-size: 1rem; line-height: 1.6; margin: 0; max-width: 640px; }
+
+/* Buttons */
+.stButton > button {
+    border-radius: 10px; font-weight: 600; border: 1px solid var(--ft-border);
+    background: #fff; color: var(--ft-navy);
+    transition: all .15s ease;
+}
+.stButton > button:hover { border-color: var(--ft-blue); color: var(--ft-blue); }
+.stButton > button[kind="primary"] {
+    background: linear-gradient(135deg, #2563eb, #3b82f6);
+    color: #fff; border: none;
+    box-shadow: 0 4px 14px rgba(37,99,235,0.28);
+}
+.stButton > button[kind="primary"]:hover { box-shadow: 0 6px 20px rgba(37,99,235,0.36); }
+
+/* Dataframe */
+[data-testid="stDataFrame"] { border: 1px solid var(--ft-border); border-radius: 12px; overflow: hidden; }
+
+/* Tabs */
+.stTabs [data-baseweb="tab-list"] { gap: 6px; }
+.stTabs [data-baseweb="tab"] {
+    border-radius: 9px 9px 0 0; font-weight: 600; color: var(--ft-slate);
+}
+.stTabs [aria-selected="true"] { color: var(--ft-blue) !important; }
+</style>
+"""
+st.markdown(CSS, unsafe_allow_html=True)
+
+
+# ---------------------------------------------------------------------
+# Session state helpers
+# ---------------------------------------------------------------------
+def _get_state() -> FinancialState:
+    if "fin_state" not in st.session_state:
+        st.session_state.fin_state = FinancialState()
+    return st.session_state.fin_state
+
+
+def _reset_state() -> None:
+    st.session_state.fin_state = FinancialState()
+
+
+def _set_config(key: str, value: Any) -> None:
+    st.session_state.setdefault("config", {"use_ai_categorization": True, "use_ai_insights": True})
+    st.session_state.config[key] = value
+
+
+def _get_config() -> Dict[str, bool]:
+    st.session_state.setdefault("config", {"use_ai_categorization": True, "use_ai_insights": True})
+    return st.session_state.config
+
+
+# ---------------------------------------------------------------------
+# Formatting helpers
+# ---------------------------------------------------------------------
+def fmt_money(v: float) -> str:
+    sign = "-" if v < 0 else ""
+    return f"{sign}${abs(v):,.0f}"
+
+
+def fmt_pct(v: float) -> str:
+    return f"{v:.1f}%"
+
+
+def kpi_card(label: str, value: str, sub: str = "", accent: str = "") -> str:
+    accent_class = {
+        "blue": "ft-kpi-accent",
+        "green": "ft-kpi-green",
+        "red": "ft-kpi-red",
+    }.get(accent, "")
+    return f"""
+    <div class="ft-card">
+        <div class="ft-kpi-label">{label}</div>
+        <div class="ft-kpi-value {accent_class}">{value}</div>
+        <div class="ft-kpi-sub">{sub}</div>
     </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-
-# ============================================================
-# KPI CARDS
-# ============================================================
-
-kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-
-
-with kpi1:
-
-    st.markdown(
-        f"""
-        <div class="kpi-card">
-
-            <div class="kpi-top">
-
-                <div class="kpi-label">
-                    Revenue
-                </div>
-
-                <div class="kpi-icon">
-                    $
-                </div>
-
-            </div>
-
-            <div class="kpi-value">
-                ${income:,.2f}
-            </div>
-
-            <div class="kpi-caption">
-                Total income analyzed
-            </div>
-
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-with kpi2:
-
-    st.markdown(
-        f"""
-        <div class="kpi-card">
-
-            <div class="kpi-top">
-
-                <div class="kpi-label">
-                    Expenses
-                </div>
-
-                <div class="kpi-icon">
-                    ↗
-                </div>
-
-            </div>
-
-            <div class="kpi-value">
-                ${expenses:,.2f}
-            </div>
-
-            <div class="kpi-caption">
-                Total business spending
-            </div>
-
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-with kpi3:
-
-    st.markdown(
-        f"""
-        <div class="kpi-card">
-
-            <div class="kpi-top">
-
-                <div class="kpi-label">
-                    Net Cash Flow
-                </div>
-
-                <div class="kpi-icon">
-                    ↑
-                </div>
-
-            </div>
-
-            <div class="kpi-value">
-                ${net_cash_flow:,.2f}
-            </div>
-
-            <div class="kpi-caption">
-                Revenue minus expenses
-            </div>
-
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-with kpi4:
-
-    st.markdown(
-        f"""
-        <div class="kpi-card">
-
-            <div class="kpi-top">
-
-                <div class="kpi-label">
-                    Expense Ratio
-                </div>
-
-                <div class="kpi-icon">
-                    %
-                </div>
-
-            </div>
-
-            <div class="kpi-value">
-                {expense_ratio:.1f}%
-            </div>
-
-            <div class="kpi-caption">
-                Expenses relative to revenue
-            </div>
-
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-# ============================================================
-# DECISION + HEALTH
-# ============================================================
-
-st.markdown(
     """
-    <div class="section-header">
-        <div class="section-title">
-            AI Financial Intelligence
-        </div>
-        <div class="section-caption">
-            Generated by the FinTrack agent system
-        </div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-decision_col, health_col = st.columns(
-    [1.6, 1]
-)
 
 
-# ------------------------------------------------------------
-# AI DECISION
-# ------------------------------------------------------------
-
-with decision_col:
-
-    st.markdown(
-        f"""
-        <div class="decision-panel">
-
-            <div class="decision-badge">
-                ✦ AI Decision
-            </div>
-
-            <div class="decision-title">
-                {decision_title}
-            </div>
-
-            <div class="decision-description">
-                {decision_description}
-            </div>
-
-            <div class="action-label">
-                Recommended action
-            </div>
-
-            <div class="action-text">
-                {recommended_action}
-            </div>
-
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+def severity_badge(sev: str) -> str:
+    sev = (sev or "LOW").upper()
+    return f'<span class="ft-sev ft-sev-{sev}">{sev}</span>'
 
 
-# ------------------------------------------------------------
-# HEALTH
-# ------------------------------------------------------------
+# ---------------------------------------------------------------------
+# Pipeline runner
+# ---------------------------------------------------------------------
+def _run_pipeline(df_raw: pd.DataFrame, progress_placeholder) -> FinancialState:
+    state = _get_state()
+    config = _get_config()
+    state.errors = []
 
-with health_col:
-
-    health_color = (
-        "#059669"
-        if health_score >= 80
-        else "#d97706"
-        if health_score >= 60
-        else "#dc2626"
-    )
-
-    st.markdown(
-        f"""
-        <div class="health-panel">
-
-            <div class="health-header">
-
-                <div class="health-label">
-                    Financial Health
-                </div>
-
-                <div class="health-tag">
-                    AI SCORE
-                </div>
-
-            </div>
-
-            <div class="health-score-row">
-
-                <div class="health-score">
-                    {health_score}
-                </div>
-
-                <div class="health-max">
-                    / 100
-                </div>
-
-            </div>
-
-            <div class="health-status"
-                 style="color:{health_color};">
-                ● {health_status}
-            </div>
-
-            <div class="health-description">
-                Based on cash flow, expense ratio,
-                spending patterns and detected risks.
-            </div>
-
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-# ============================================================
-# CASH FLOW CHART
-# ============================================================
-
-st.markdown(
-    """
-    <div class="section-header">
-        <div class="section-title">
-            Cash Flow
-        </div>
-        <div class="section-caption">
-            Monthly revenue vs expenses
-        </div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-monthly = stats.get(
-    "monthly"
-)
-
-if monthly is not None and len(monthly) > 0:
-
-    chart_df = monthly.copy()
-
-    if "income" not in chart_df.columns:
-        chart_df["income"] = 0
-
-    if "expense" not in chart_df.columns:
-        chart_df["expense"] = 0
-
-    chart_df = chart_df.reset_index()
-
-    month_column = chart_df.columns[0]
-
-    fig = go.Figure()
-
-    fig.add_trace(
-        go.Scatter(
-            x=chart_df[month_column],
-            y=chart_df["income"],
-            mode="lines+markers",
-            name="Revenue",
-            line=dict(
-                color="#2563eb",
-                width=3,
-            ),
-            marker=dict(
-                size=6,
-            ),
-        )
-    )
-
-    fig.add_trace(
-        go.Scatter(
-            x=chart_df[month_column],
-            y=chart_df["expense"],
-            mode="lines+markers",
-            name="Expenses",
-            line=dict(
-                color="#f59e0b",
-                width=3,
-            ),
-            marker=dict(
-                size=6,
-            ),
-        )
-    )
-
-    fig.update_layout(
-        height=310,
-        margin=dict(
-            l=10,
-            r=10,
-            t=15,
-            b=10,
-        ),
-        paper_bgcolor="white",
-        plot_bgcolor="white",
-        font=dict(
-            family="Inter, sans-serif",
-            color="#64748b",
-            size=11,
-        ),
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1,
-        ),
-        xaxis=dict(
-            showgrid=False,
-            linecolor="#e2e8f0",
-        ),
-        yaxis=dict(
-            showgrid=True,
-            gridcolor="#f1f5f9",
-            zeroline=False,
-        ),
-        hovermode="x unified",
-    )
-
-    st.plotly_chart(
-        fig,
-        use_container_width=True,
-        config={
-            "displayModeBar": False,
-        },
-    )
-
-
-# ============================================================
-# ACTIVITY + INSIGHTS
-# ============================================================
-
-st.markdown(
-    """
-    <div class="section-header">
-        <div class="section-title">
-            Agent Intelligence
-        </div>
-        <div class="section-caption">
-            Latest autonomous activity
-        </div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-activity_col, insight_col = st.columns(
-    [1, 1]
-)
-
-
-# ============================================================
-# RECENT AGENT ACTIVITY
-# ============================================================
-
-with activity_col:
-
-    st.markdown(
-        '<div class="activity-panel">',
-        unsafe_allow_html=True,
-    )
-
-    risk_count = len(
-        risk.get(
-            "risks",
-            [],
-        )
-    )
-
-    opportunity_count = len(
-        opportunity.get(
-            "opportunities",
-            [],
-        )
-    )
-
-    findings = decisions.get(
-        "findings",
-        [],
-    )
-
-    pattern_count = len(
-        findings
-    )
-
-    critic_verified = critic.get(
-        "approved",
-        False,
-    )
-
-    activities = [
-        (
-            "Data Agent",
-            f"{len(df)} transactions cleaned",
-        ),
-        (
-            "Analytics Agent",
-            f"{pattern_count} financial patterns analyzed",
-        ),
-        (
-            "Opportunity Agent",
-            f"{opportunity_count} opportunities identified",
-        ),
-        (
-            "Critic Agent",
-            (
-                "Decision verified"
-                if critic_verified
-                else "Decision requires review"
-            ),
-        ),
-        (
-            "Categorization Agent",
-            f"{len(df)} transactions classified",
-        ),
-        (
-            "Risk Agent",
-            f"{risk_count} risks detected",
-        ),
-        (
-            "Decision Agent",
-            decision_title,
-        ),
-        (
-            "Insight Agent",
-            "Financial briefing generated",
-        ),
+    steps = [
+        ("Data Agent", "Cleaning and validating transactions..."),
+        ("Categorization Agent", "Classifying transactions..."),
+        ("Analytics Agent", "Computing financial patterns..."),
+        ("Risk Agent", "Scanning for financial risks..."),
+        ("Opportunity Agent", "Searching for opportunities..."),
+        ("Decision Agent", "Making a strategic decision..."),
+        ("Critic Agent", "Independently verifying the decision..."),
+        ("Insight Agent", "Generating executive briefing..."),
     ]
 
-    for name, message in activities:
+    # -------- Data Agent --------
+    state.set_status("Data Agent", "running")
+    _render_progress(progress_placeholder, state)
+    try:
+        result = process_transactions(df_raw)
+    except Exception as exc:
+        state.set_status("Data Agent", "error", str(exc))
+        state.errors.append(str(exc))
+        _render_progress(progress_placeholder, state)
+        return state
 
+    state.df = result["df"]
+    state.quality = result["quality"]
+    state.errors.extend(result["errors"])
+    state.set_status(
+        "Data Agent", "complete",
+        f"{state.quality['clean_rows']} transactions cleaned",
+        "; ".join(result["errors"]) or "All rows valid.",
+    )
+    time.sleep(0.15)
+    _render_progress(progress_placeholder, state)
+
+    if state.df.empty:
+        state.set_status("Data Agent", "error", "No valid rows after cleaning.")
+        _render_progress(progress_placeholder, state)
+        return state
+
+    # -------- Categorization Agent --------
+    state.set_status("Categorization Agent", "running")
+    _render_progress(progress_placeholder, state)
+    cat = run_categorization_agent(
+        state.df, use_ai=config["use_ai_categorization"]
+    )
+    state.df = cat["df"]
+    state.set_status(
+        "Categorization Agent", "complete",
+        f"{cat['classified']} transactions classified",
+        f"Method: {cat['method']} • categories: {len(cat['counts'])}",
+    )
+    time.sleep(0.15)
+    _render_progress(progress_placeholder, state)
+
+    # -------- Analytics Agent --------
+    state.set_status("Analytics Agent", "running")
+    _render_progress(progress_placeholder, state)
+    state.stats = run_analytics_agent(state.df)
+    state.set_status(
+        "Analytics Agent", "complete",
+        f"{len(state.stats['evidence'])} financial patterns analyzed",
+        f"Revenue {fmt_money(state.stats['total_revenue'])} • "
+        f"Expenses {fmt_money(state.stats['total_expenses'])}",
+    )
+    time.sleep(0.15)
+    _render_progress(progress_placeholder, state)
+
+    # -------- Risk Agent --------
+    state.set_status("Risk Agent", "running")
+    _render_progress(progress_placeholder, state)
+    state.risk = run_risk_agent(state.stats)
+    state.set_status(
+        "Risk Agent", "complete",
+        f"{len(state.risk['risks'])} risk(s) detected",
+        f"Risk level: {state.risk['risk_level']} ({state.risk['risk_score']}/100)",
+    )
+    time.sleep(0.15)
+    _render_progress(progress_placeholder, state)
+
+    # -------- Opportunity Agent --------
+    state.set_status("Opportunity Agent", "running")
+    _render_progress(progress_placeholder, state)
+    state.opportunity = run_opportunity_agent(state.stats)
+    state.set_status(
+        "Opportunity Agent", "complete",
+        f"{len(state.opportunity['opportunities'])} opportunit(ies) identified",
+        f"Opportunity score: {state.opportunity['opportunity_score']}/100",
+    )
+    time.sleep(0.15)
+    _render_progress(progress_placeholder, state)
+
+    # -------- Decision + Critic loop --------
+    state.set_status("Decision Agent", "running")
+    _render_progress(progress_placeholder, state)
+    decision, critic, revisions, loop_summary = run_decision_with_critique(
+        state.stats, state.risk, state.opportunity
+    )
+    state.decision = decision
+    state.critic = critic
+    state.revision_count = revisions
+
+    state.set_status(
+        "Decision Agent", "complete",
+        decision.get("title", "Decision made"),
+        f"Priority: {decision.get('priority', '—')}",
+    )
+    if revisions > 0:
+        state.set_status(
+            "Critic Agent", "complete",
+            f"Decision revised {revisions}× then approved",
+            loop_summary,
+        )
+    else:
+        state.set_status(
+            "Critic Agent", "complete",
+            "Decision verified",
+            loop_summary,
+        )
+    time.sleep(0.15)
+    _render_progress(progress_placeholder, state)
+
+    # -------- Insight Agent --------
+    state.set_status("Insight Agent", "running")
+    _render_progress(progress_placeholder, state)
+    health_score = state.financial_health_score()
+    health_label = state.health_label()
+    state.summary = run_insight_agent(
+        state.stats, state.risk, state.opportunity,
+        state.decision, state.critic,
+        health_score, health_label,
+        use_ai=config["use_ai_insights"],
+    )
+    state.set_status(
+        "Insight Agent", "complete",
+        "Financial briefing generated",
+        f"Health: {health_score}/100 — {health_label}",
+    )
+    time.sleep(0.15)
+    _render_progress(progress_placeholder, state)
+
+    return state
+
+
+def _render_progress(placeholder, state: FinancialState) -> None:
+    icons = {
+        "pending": ("○", "pending"),
+        "running": ("◐", "pending"),
+        "complete": ("✓", "complete"),
+        "revise": ("↻", "revise"),
+        "error": ("✕", "revise"),
+    }
+    rows = []
+    for name, status in state.agent_status.items():
+        icon, css = icons.get(status["status"], ("○", "pending"))
+        msg = status.get("message") or {
+            "pending": "Pending",
+            "running": "Working…",
+            "complete": "Complete",
+            "revise": "Revision required",
+            "error": "Error",
+        }.get(status["status"], "")
+        rows.append(
+            f'<div class="ft-tl-item">'
+            f'<div class="ft-tl-icon {css}">{icon}</div>'
+            f'<div><div class="ft-tl-name">{name}</div>'
+            f'<div class="ft-tl-msg">{msg}</div></div>'
+            f'</div>'
+        )
+    placeholder.markdown(
+        f'<div class="ft-card"><div class="ft-timeline">{"".join(rows)}</div></div>',
+        unsafe_allow_html=True,
+    )
+
+
+# ---------------------------------------------------------------------
+# Charts
+# ---------------------------------------------------------------------
+def cash_flow_chart(monthly: list) -> go.Figure:
+    if not monthly:
+        return go.Figure()
+    months = [m["month"] for m in monthly]
+    rev = [m["revenue"] for m in monthly]
+    exp = [m["expenses"] for m in monthly]
+    net = [m["net"] for m in monthly]
+
+    fig = go.Figure()
+    fig.add_bar(
+        x=months, y=rev, name="Revenue",
+        marker_color="#93c5fd", marker_line_width=0,
+        hovertemplate="%{x}<br>Revenue: $%{y:,.0f}<extra></extra>",
+    )
+    fig.add_bar(
+        x=months, y=exp, name="Expenses",
+        marker_color="#fca5a5", marker_line_width=0,
+        hovertemplate="%{x}<br>Expenses: $%{y:,.0f}<extra></extra>",
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=months, y=net, name="Net Cash Flow",
+            mode="lines+markers",
+            line=dict(color="#2563eb", width=3),
+            marker=dict(size=9, color="#2563eb", line=dict(color="white", width=2)),
+            hovertemplate="%{x}<br>Net: $%{y:,.0f}<extra></extra>",
+        )
+    )
+    fig.update_layout(
+        barmode="group",
+        plot_bgcolor="white", paper_bgcolor="white",
+        font=dict(family="Inter, sans-serif", color="#334155", size=12),
+        margin=dict(l=10, r=10, t=10, b=10),
+        height=340,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, bgcolor="rgba(0,0,0,0)"),
+        xaxis=dict(showgrid=False, linecolor="#e2e8f0"),
+        yaxis=dict(showgrid=True, gridcolor="#f1f5f9", zerolinecolor="#cbd5e1", tickprefix="$", tickformat=",.0f"),
+        hoverlabel=dict(bgcolor="white", bordercolor="#e2e8f0", font_size=12),
+    )
+    return fig
+
+
+def health_gauge(score: int, label: str) -> go.Figure:
+    color = (
+        "#10b981" if score >= 80 else
+        "#22c55e" if score >= 60 else
+        "#f59e0b" if score >= 40 else "#ef4444"
+    )
+    fig = go.Figure(
+        go.Indicator(
+            mode="gauge+number",
+            value=score,
+            number={"suffix": " / 100", "font": {"size": 30, "color": "#0f172a", "family": "Inter"}},
+            gauge={
+                "axis": {"range": [0, 100], "tickwidth": 1, "tickcolor": "#cbd5e1",
+                         "tickfont": {"size": 10, "color": "#94a3b8"}},
+                "bar": {"color": color, "thickness": 0.28},
+                "bgcolor": "#f1f5f9",
+                "borderwidth": 0,
+                "steps": [
+                    {"range": [0, 40], "color": "rgba(239,68,68,0.08)"},
+                    {"range": [40, 60], "color": "rgba(245,158,11,0.08)"},
+                    {"range": [60, 80], "color": "rgba(34,197,94,0.08)"},
+                    {"range": [80, 100], "color": "rgba(16,185,129,0.10)"},
+                ],
+            },
+        )
+    )
+    fig.update_layout(
+        height=210, margin=dict(l=10, r=10, t=10, b=10),
+        paper_bgcolor="white", font=dict(family="Inter, sans-serif"),
+    )
+    return fig
+
+
+# ---------------------------------------------------------------------
+# Sidebar
+# ---------------------------------------------------------------------
+def render_sidebar(state: FinancialState) -> None:
+    with st.sidebar:
         st.markdown(
-            f"""
-            <div class="activity-row">
-
-                <div class="activity-icon"></div>
-
+            """
+            <div class="ft-brand">
+                <div class="dot">FT</div>
                 <div>
-
-                    <div class="activity-name">
-                        {name}
-                    </div>
-
-                    <div class="activity-message">
-                        {message}
-                    </div>
-
+                    <div>FinTrack AI</div>
+                    <div class="ft-tagline">AI Financial Intelligence</div>
                 </div>
-
             </div>
             """,
             unsafe_allow_html=True,
         )
+        st.markdown('<div class="ft-divider"></div>', unsafe_allow_html=True)
 
-    st.markdown(
-        "</div>",
-        unsafe_allow_html=True,
-    )
+        st.markdown("**Navigation**")
+        st.page_link("app.py", label="Overview", icon="📊")
+        st.page_link("pages/1_🤖_Agent_Center.py", label="Agent Center", icon="🤖")
+        st.page_link("pages/2_📊_Analytics.py", label="Analytics", icon="📈")
+        st.page_link("pages/3_⚠️_Risks_&_Opportunities.py", label="Risks & Opportunities", icon="⚠️")
+        st.page_link("pages/4_💬_AI_Copilot.py", label="AI Copilot", icon="💬")
+        st.page_link("pages/5_📁_Transactions.py", label="Transactions", icon="📁")
+        st.page_link("pages/6_⚙️_Settings.py", label="Settings", icon="⚙️")
+
+        st.markdown('<div class="ft-divider"></div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="ft-status"><span class="pulse"></span> AI System Online</div>',
+            unsafe_allow_html=True,
+        )
+        if hf_available():
+            st.caption("Hugging Face: connected")
+        else:
+            st.caption("Hugging Face: fallback mode")
 
 
-# ============================================================
-# RISKS + OPPORTUNITIES
-# ============================================================
-
-with insight_col:
-
-    st.markdown(
-        '<div class="panel">',
-        unsafe_allow_html=True,
-    )
-
+# ---------------------------------------------------------------------
+# Views
+# ---------------------------------------------------------------------
+def render_landing() -> None:
     st.markdown(
         """
-        <div style="
-            color:#111827;
-            font-size:13px;
-            font-weight:750;
-            margin-bottom:3px;
-        ">
-            Risks & Opportunities
-        </div>
-
-        <div style="
-            color:#94a3b8;
-            font-size:10px;
-            margin-bottom:8px;
-        ">
-            Signals detected by strategic agents
+        <div class="ft-hero">
+            <div class="ft-badge ft-badge-blue" style="margin-bottom:14px;">
+                ● AGENTIC FINANCIAL DECISION SYSTEM
+            </div>
+            <h1>Your AI Financial Decision Engine</h1>
+            <p>
+                Upload your financial data. Specialized AI agents analyze it,
+                challenge each other's conclusions, and recommend what your
+                business should do next — with a Critic Agent verifying every
+                strategic decision before it reaches you.
+            </p>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    risks = risk.get(
-        "risks",
-        [],
-    )
+    col1, col2 = st.columns([1.4, 1])
 
-    opportunities = opportunity.get(
-        "opportunities",
-        [],
-    )
-
-    displayed = 0
-
-    for item in risks[:3]:
-
-        title = item.get(
-            "title",
-            "Financial Risk",
-        )
-
-        description = item.get(
-            "description",
-            "",
+    with col1:
+        st.markdown("#### Upload your transactions")
+        uploaded = st.file_uploader(
+            "CSV with columns: date, description, amount",
+            type=["csv"],
+            label_visibility="collapsed",
         )
 
         st.markdown(
-            f"""
-            <div class="insight-item">
-
-                <div class="insight-title">
-                    {title}
-
-                    <span class="risk-badge">
-                        RISK
-                    </span>
-                </div>
-
-                <div class="insight-text">
-                    {description}
-                </div>
-
-            </div>
-            """,
+            "<div style='color:#64748b;font-size:0.82rem;margin-top:6px;'>"
+            "Positive amounts = income · Negative amounts = expenses"
+            "</div>",
             unsafe_allow_html=True,
         )
 
-        displayed += 1
+        st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+        use_sample = st.button("Try sample data", use_container_width=True)
 
-    for item in opportunities[:3]:
+        st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+        start = st.button("Run AI Analysis", type="primary", use_container_width=True)
 
-        title = item.get(
-            "title",
-            "Opportunity",
-        )
-
-        description = item.get(
-            "description",
-            "",
-        )
-
-        st.markdown(
-            f"""
-            <div class="insight-item">
-
-                <div class="insight-title">
-                    {title}
-
-                    <span class="opportunity-badge">
-                        OPPORTUNITY
-                    </span>
-                </div>
-
-                <div class="insight-text">
-                    {description}
-                </div>
-
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        displayed += 1
-
-    if displayed == 0:
-
+    with col2:
         st.markdown(
             """
-            <div style="
-                color:#94a3b8;
-                font-size:11px;
-                padding:18px 0;
-            ">
-                No significant risks or opportunities detected.
+            <div class="ft-card" style="height:100%;">
+                <div class="ft-kpi-label">The Agentic Pipeline</div>
+                <div style="margin-top:10px;color:#334155;font-size:0.88rem;line-height:2;">
+                    <div>🔹 Data Agent — cleans &amp; validates</div>
+                    <div>🔹 Categorization Agent — classifies</div>
+                    <div>🔹 Analytics Agent — computes patterns</div>
+                    <div>🔹 Risk Agent — finds risks</div>
+                    <div>🔹 Opportunity Agent — finds upside</div>
+                    <div>🔹 Decision Agent — decides</div>
+                    <div>🔹 <b>Critic Agent — verifies or revises</b></div>
+                    <div>🔹 Insight Agent — briefs you</div>
+                </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
+    df_raw = None
+    if start:
+        if uploaded is not None:
+            try:
+                df_raw = load_csv(uploaded.getvalue())
+            except Exception as exc:
+                st.error(f"Could not read file: {exc}")
+        elif use_sample:
+            try:
+                df_raw = load_csv("sample_data/sample_transactions.csv")
+            except Exception as exc:
+                st.error(f"Could not load sample data: {exc}")
+        else:
+            st.warning("Please upload a CSV or click 'Try sample data' first.")
+
+    if df_raw is not None:
+        _execute_analysis(df_raw)
+
+
+def _execute_analysis(df_raw: pd.DataFrame) -> None:
+    st.markdown("### Analyzing your financial data…")
+    progress_placeholder = st.empty()
+    state = _get_state()
+
+    with st.spinner("Agents are working…"):
+        state = _run_pipeline(df_raw, progress_placeholder)
+
+    if state.errors and state.df is None:
+        st.error("Analysis failed: " + "; ".join(state.errors))
+        return
+
+    st.success("Analysis complete. Open a page from the sidebar to explore results.")
+    st.session_state["analysis_done"] = True
+    time.sleep(0.3)
+    st.rerun()
+
+
+def render_overview(state: FinancialState) -> None:
+    if not state.is_complete():
+        st.info("No analysis yet. Go to **Overview** and run an analysis to populate this page.")
+        return
+
+    stats = state.stats
+    health_score = state.financial_health_score()
+    health_label = state.health_label()
+
+    # -------- Header --------
+    head_l, head_r = st.columns([3, 1])
+    with head_l:
+        st.markdown(
+            """
+            <div>
+                <div class="ft-h1">Financial Intelligence</div>
+                <div class="ft-sub">AI-powered financial analysis for your business</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with head_r:
+        st.markdown(
+            f"""
+            <div style="text-align:right;">
+                <span class="ft-badge">● AI Analysis Complete</span>
+                <div style="color:#94a3b8;font-size:0.78rem;margin-top:6px;">
+                    {stats['num_transactions']} transactions analyzed
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
+
+    # -------- KPI cards --------
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        st.markdown(kpi_card(
+            "Revenue", fmt_money(stats["total_revenue"]),
+            "Income across all periods", accent="blue",
+        ), unsafe_allow_html=True)
+    with c2:
+        st.markdown(kpi_card(
+            "Expenses", fmt_money(stats["total_expenses"]),
+            f"Across {len(stats.get('category_totals', {}))} categories", accent="red",
+        ), unsafe_allow_html=True)
+    with c3:
+        net = stats["net_cash_flow"]
+        st.markdown(kpi_card(
+            "Net Cash Flow", fmt_money(net),
+            "Revenue − Expenses",
+            accent="green" if net >= 0 else "red",
+        ), unsafe_allow_html=True)
+    with c4:
+        st.markdown(kpi_card(
+            "Expense Ratio", fmt_pct(stats["expense_ratio"]),
+            "Expenses as % of revenue",
+            accent="green" if stats["expense_ratio"] < 60 else "red",
+        ), unsafe_allow_html=True)
+
+    st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
+
+    # -------- Health + Decision --------
+    left, right = st.columns([1, 1.6])
+
+    with left:
+        st.markdown(
+            f"""
+            <div class="ft-card">
+                <div class="ft-kpi-label">Financial Health</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.plotly_chart(
+            health_gauge(health_score, health_label),
+            use_container_width=True,
+            config={"displayModeBar": False},
+        )
+        st.markdown(
+            f"""
+            <div style="margin-top:-12px;text-align:center;">
+                <span class="ft-badge {'ft-badge-red' if health_score < 40 else ''}">
+                    ● {health_label}
+                </span>
+                <div style="color:#64748b;font-size:0.8rem;margin-top:8px;">
+                    Based on cash flow, expense ratio, spending patterns and detected risks.
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with right:
+        d = state.decision
+        c = state.critic
+        critic_icon = "✓" if c.get("approved") else "↻"
+        critic_txt = "Decision Verified" if c.get("approved") else "Revision Required"
+        revision_line = (
+            f'<div style="color:#b45309;font-size:0.8rem;margin-top:10px;">'
+            f'↻ {state.revision_count} revision(s) applied before approval.</div>'
+            if state.revision_count > 0 else
+            f'<div style="color:#047857;font-size:0.8rem;margin-top:10px;">'
+            f'✓ Approved on first pass.</div>'
+        )
+        st.markdown(
+            f"""
+            <div class="ft-decision">
+                <div class="ft-decision-label">AI DECISION &nbsp;·&nbsp; {critic_icon} {critic_txt}</div>
+                <div class="ft-decision-title">{d.get('title', '—')}</div>
+                <div class="ft-decision-body">{d.get('decision', '')}</div>
+                <div class="ft-decision-grid">
+                    <div class="ft-decision-mini">
+                        <div class="lbl">Recommended Action</div>
+                        <div class="val">{d.get('recommended_actions', ['—'])[0]}</div>
+                    </div>
+                    <div class="ft-decision-mini">
+                        <div class="lbl">Expected Impact</div>
+                        <div class="val">{d.get('expected_impact', '—')}</div>
+                    </div>
+                </div>
+                {revision_line}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+
+    # -------- Cash flow chart --------
+    st.markdown('<div class="ft-kpi-label">Cash Flow Trend</div>', unsafe_allow_html=True)
+    st.markdown('<div class="ft-card">', unsafe_allow_html=True)
+    st.plotly_chart(
+        cash_flow_chart(stats["monthly"]),
+        use_container_width=True,
+        config={"displayModeBar": False},
+    )
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+
+    # -------- Agent intelligence --------
+    st.markdown('<div class="ft-kpi-label">Agent Intelligence</div>', unsafe_allow_html=True)
+    _render_agent_timeline(state)
+
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+
+    # -------- Risks + Opportunities preview --------
+    st.markdown('<div class="ft-kpi-label">Risks & Opportunities</div>', unsafe_allow_html=True)
+    rc, oc = st.columns(2)
+    with rc:
+        _render_risk_preview(state)
+    with oc:
+        _render_opportunity_preview(state)
+
+
+def _render_agent_timeline(state: FinancialState) -> None:
+    rows = []
+    for name, s in state.agent_status.items():
+        status = s["status"]
+        icon = {"complete": "✓", "running": "◐", "pending": "○", "error": "✕", "revise": "↻"}.get(status, "○")
+        css = "pending" if status in {"pending", "running"} else ("revise" if status in {"error", "revise"} else "")
+        msg = s.get("message") or status.title()
+        detail = s.get("detail", "")
+        detail_html = f'<div class="ft-tl-msg" style="font-size:0.78rem;color:#94a3b8;">{detail}</div>' if detail else ""
+        rows.append(
+            f'<div class="ft-tl-item">'
+            f'<div class="ft-tl-icon {css}">{icon}</div>'
+            f'<div><div class="ft-tl-name">{name}</div>'
+            f'<div class="ft-tl-msg">{msg}</div>{detail_html}</div>'
+            f'</div>'
+        )
     st.markdown(
-        "</div>",
+        f'<div class="ft-card"><div class="ft-timeline">{"".join(rows)}</div></div>',
         unsafe_allow_html=True,
     )
 
 
-# ============================================================
-# FOOTER
-# ============================================================
+def _render_risk_preview(state: FinancialState) -> None:
+    risks = state.risk.get("risks", [])
+    if not risks:
+        st.markdown(
+            '<div class="ft-item"><div class="ft-item-title">No material risks detected</div>'
+            '<div class="ft-item-desc">Cash flow, expense ratio, and concentration are within healthy bounds.</div></div>',
+            unsafe_allow_html=True,
+        )
+        return
+    for r in risks[:3]:
+        st.markdown(
+            f'<div class="ft-item">'
+            f'<div class="ft-item-title">{r["title"]}{severity_badge(r.get("severity","LOW"))}</div>'
+            f'<div class="ft-item-desc">{r["description"]}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
 
-st.markdown(
-    """
-    <div style="
-        text-align:center;
-        color:#94a3b8;
-        font-size:10px;
-        margin-top:35px;
-        padding-top:18px;
-        border-top:1px solid #e8edf3;
-    ">
-        FinTrack AI · Agentic Financial Intelligence
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
 
+def _render_opportunity_preview(state: FinancialState) -> None:
+    opps = state.opportunity.get("opportunities", [])
+    if not opps:
+        st.markdown(
+            '<div class="ft-item"><div class="ft-item-title">No major opportunities detected</div>'
+            '<div class="ft-item-desc">Current spending and cash flow look optimized.</div></div>',
+            unsafe_allow_html=True,
+        )
+        return
+    for o in opps[:3]:
+        st.markdown(
+            f'<div class="ft-item">'
+            f'<div class="ft-item-title">↑ {o["title"]}{severity_badge(o.get("impact","LOW"))}</div>'
+            f'<div class="ft-item-desc">{o["description"]}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+
+# ---------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------
+def main() -> None:
+    state = _get_state()
+    render_sidebar(state)
+
+    if not state.is_complete() and not st.session_state.get("analysis_done"):
+        render_landing()
+    elif not state.is_complete():
+        # Analysis attempted but incomplete
+        render_landing()
+    else:
+        render_overview(state)
+
+
+if __name__ == "__main__":
+    main()
