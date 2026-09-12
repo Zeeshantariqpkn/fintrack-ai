@@ -3,7 +3,6 @@ FinTrack AI — main entry point.
 """
 from __future__ import annotations
 
-import os
 import sys
 import time
 from pathlib import Path
@@ -33,6 +32,7 @@ from utils.financial_state import (
     reset_financial_state,
 )
 from utils.ui import inject_auto_nav_hider, render_sidebar
+from utils.vector_store import reset_vector_store
 
 st.set_page_config(
     page_title="FinTrack AI — Agentic Financial Analytics",
@@ -55,212 +55,122 @@ CSS = """
     --ft-bg: #ffffff;
     --ft-bg-soft: #f8fafc;
     --ft-green: #10b981;
-    --ft-amber: #f59e0b;
     --ft-red: #ef4444;
     --ft-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 16px rgba(15, 23, 42, 0.06);
     --ft-shadow-lg: 0 4px 12px rgba(15, 23, 42, 0.06), 0 16px 40px rgba(15, 23, 42, 0.08);
 }
-
 html, body, [class*="css"] {
     font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
     color: var(--ft-navy);
 }
-
-.main .block-container {
-    padding-top: 1.5rem;
-    padding-bottom: 3rem;
-    max-width: 1280px;
-}
-
-#MainMenu {visibility: hidden;}
-footer {visibility: hidden;}
+.main .block-container { padding-top: 1.5rem; padding-bottom: 3rem; max-width: 1280px; }
+#MainMenu {visibility: hidden;} footer {visibility: hidden;}
 header[data-testid="stHeader"] {background: transparent;}
-
-section[data-testid="stSidebar"] {
-    background: #ffffff;
-    border-right: 1px solid var(--ft-border);
-}
+section[data-testid="stSidebar"] { background: #ffffff; border-right: 1px solid var(--ft-border); }
 section[data-testid="stSidebar"] > div { padding-top: 1.5rem; }
 
-.ft-brand {
-    display: flex; align-items: center; gap: 10px;
-    font-weight: 800; font-size: 1.15rem; letter-spacing: -0.02em;
-    color: var(--ft-navy);
-}
-.ft-brand .dot {
-    width: 30px; height: 30px; border-radius: 9px;
+.ft-brand { display: flex; align-items: center; gap: 10px;
+    font-weight: 800; font-size: 1.15rem; letter-spacing: -0.02em; color: var(--ft-navy); }
+.ft-brand .dot { width: 30px; height: 30px; border-radius: 9px;
     background: linear-gradient(135deg, #2563eb, #3b82f6);
     display: flex; align-items: center; justify-content: center;
     color: white; font-size: 0.85rem; font-weight: 700;
-    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
-}
-.ft-tagline {
-    color: var(--ft-muted); font-size: 0.78rem; margin-top: 2px;
-    letter-spacing: 0.02em; text-transform: uppercase; font-weight: 600;
-}
-.ft-divider {
-    height: 1px; background: var(--ft-border); margin: 1.1rem 0;
-}
-.ft-status {
-    display: flex; align-items: center; gap: 8px;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3); }
+.ft-tagline { color: var(--ft-muted); font-size: 0.78rem; margin-top: 2px;
+    letter-spacing: 0.02em; text-transform: uppercase; font-weight: 600; }
+.ft-divider { height: 1px; background: var(--ft-border); margin: 1.1rem 0; }
+.ft-status { display: flex; align-items: center; gap: 8px;
     font-size: 0.82rem; color: var(--ft-slate); font-weight: 600;
     padding: 8px 12px; border-radius: 10px;
-    background: var(--ft-bg-soft); border: 1px solid var(--ft-border);
-}
-.ft-status .pulse {
-    width: 8px; height: 8px; border-radius: 50%;
-    background: var(--ft-green);
-    box-shadow: 0 0 0 3px rgba(16,185,129,0.18);
-    animation: pulse 2s infinite;
-}
-@keyframes pulse {
-    0%,100% { opacity: 1; }
-    50% { opacity: 0.5; }
-}
+    background: var(--ft-bg-soft); border: 1px solid var(--ft-border); }
+.ft-status .pulse { width: 8px; height: 8px; border-radius: 50%;
+    background: var(--ft-green); box-shadow: 0 0 0 3px rgba(16,185,129,0.18);
+    animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
 
-.ft-card {
-    background: var(--ft-bg);
-    border: 1px solid var(--ft-border);
-    border-radius: 16px;
-    padding: 20px 22px;
-    box-shadow: var(--ft-shadow);
-    transition: box-shadow .2s ease, transform .2s ease;
-}
+.ft-card { background: var(--ft-bg); border: 1px solid var(--ft-border);
+    border-radius: 16px; padding: 20px 22px;
+    box-shadow: var(--ft-shadow); transition: box-shadow .2s ease; }
 .ft-card:hover { box-shadow: var(--ft-shadow-lg); }
 
-.ft-kpi-label {
-    font-size: 0.76rem; text-transform: uppercase; letter-spacing: 0.08em;
-    color: var(--ft-muted); font-weight: 700; margin-bottom: 8px;
-}
-.ft-kpi-value {
-    font-size: 1.7rem; font-weight: 800; color: var(--ft-navy);
-    letter-spacing: -0.02em; line-height: 1.1;
-}
-.ft-kpi-sub {
-    font-size: 0.8rem; color: var(--ft-slate); margin-top: 6px;
-}
+.ft-kpi-label { font-size: 0.76rem; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--ft-muted); font-weight: 700; margin-bottom: 8px; }
+.ft-kpi-value { font-size: 1.7rem; font-weight: 800; color: var(--ft-navy);
+    letter-spacing: -0.02em; line-height: 1.1; }
+.ft-kpi-sub { font-size: 0.8rem; color: var(--ft-slate); margin-top: 6px; }
 .ft-kpi-accent { color: var(--ft-blue); }
 .ft-kpi-green { color: var(--ft-green); }
 .ft-kpi-red { color: var(--ft-red); }
 
-.ft-h1 {
-    font-size: 1.9rem; font-weight: 800; color: var(--ft-navy);
-    letter-spacing: -0.025em; margin: 0;
-}
+.ft-h1 { font-size: 1.9rem; font-weight: 800; color: var(--ft-navy);
+    letter-spacing: -0.025em; margin: 0; }
 .ft-sub { color: var(--ft-slate); font-size: 0.95rem; margin-top: 4px; }
 
-.ft-badge {
-    display: inline-flex; align-items: center; gap: 6px;
+.ft-badge { display: inline-flex; align-items: center; gap: 6px;
     padding: 5px 11px; border-radius: 999px;
     font-size: 0.75rem; font-weight: 700; letter-spacing: 0.02em;
     background: rgba(16,185,129,0.1); color: #047857;
-    border: 1px solid rgba(16,185,129,0.22);
-}
-.ft-badge-blue {
-    background: var(--ft-blue-soft); color: var(--ft-blue);
-    border: 1px solid rgba(37,99,235,0.2);
-}
-.ft-badge-red {
-    background: rgba(239,68,68,0.1); color: #b91c1c;
-    border: 1px solid rgba(239,68,68,0.25);
-}
+    border: 1px solid rgba(16,185,129,0.22); }
+.ft-badge-blue { background: var(--ft-blue-soft); color: var(--ft-blue);
+    border: 1px solid rgba(37,99,235,0.2); }
+.ft-badge-red { background: rgba(239,68,68,0.1); color: #b91c1c;
+    border: 1px solid rgba(239,68,68,0.25); }
 
-.ft-decision {
-    background: linear-gradient(135deg, #f8fbff 0%, #eef5ff 100%);
-    border: 1px solid #cfe0ff;
-    border-radius: 18px;
-    padding: 24px 26px;
-    box-shadow: var(--ft-shadow-lg);
-}
-.ft-decision-label {
-    font-size: 0.72rem; font-weight: 800; letter-spacing: 0.12em;
-    color: var(--ft-blue); text-transform: uppercase; margin-bottom: 8px;
-}
-.ft-decision-title {
-    font-size: 1.35rem; font-weight: 800; color: var(--ft-navy);
-    letter-spacing: -0.02em; margin-bottom: 10px;
-}
+.ft-decision { background: linear-gradient(135deg, #f8fbff 0%, #eef5ff 100%);
+    border: 1px solid #cfe0ff; border-radius: 18px; padding: 24px 26px;
+    box-shadow: var(--ft-shadow-lg); }
+.ft-decision-label { font-size: 0.72rem; font-weight: 800; letter-spacing: 0.12em;
+    color: var(--ft-blue); text-transform: uppercase; margin-bottom: 8px; }
+.ft-decision-title { font-size: 1.35rem; font-weight: 800; color: var(--ft-navy);
+    letter-spacing: -0.02em; margin-bottom: 10px; }
 .ft-decision-body { color: var(--ft-slate); font-size: 0.92rem; line-height: 1.55; }
-.ft-decision-grid {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 18px;
-}
-.ft-decision-mini {
-    background: #fff; border: 1px solid var(--ft-border);
-    border-radius: 12px; padding: 14px 16px;
-}
-.ft-decision-mini .lbl {
-    font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em;
-    color: var(--ft-muted); text-transform: uppercase; margin-bottom: 6px;
-}
+.ft-decision-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 18px; }
+.ft-decision-mini { background: #fff; border: 1px solid var(--ft-border);
+    border-radius: 12px; padding: 14px 16px; }
+.ft-decision-mini .lbl { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em;
+    color: var(--ft-muted); text-transform: uppercase; margin-bottom: 6px; }
 .ft-decision-mini .val { color: var(--ft-navy); font-size: 0.88rem; font-weight: 600; line-height: 1.45; }
 
 .ft-timeline { position: relative; padding-left: 6px; }
-.ft-tl-item {
-    display: flex; gap: 14px; padding: 12px 0;
-    border-bottom: 1px dashed var(--ft-border);
-}
+.ft-tl-item { display: flex; gap: 14px; padding: 12px 0;
+    border-bottom: 1px dashed var(--ft-border); }
 .ft-tl-item:last-child { border-bottom: none; }
-.ft-tl-icon {
-    width: 30px; height: 30px; border-radius: 9px; flex-shrink: 0;
+.ft-tl-icon { width: 30px; height: 30px; border-radius: 9px; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
     font-size: 0.85rem; font-weight: 700;
-    background: rgba(16,185,129,0.12); color: #047857;
-}
+    background: rgba(16,185,129,0.12); color: #047857; }
 .ft-tl-icon.pending { background: var(--ft-bg-soft); color: var(--ft-muted); }
 .ft-tl-icon.revise { background: rgba(245,158,11,0.14); color: #b45309; }
 .ft-tl-name { font-weight: 700; color: var(--ft-navy); font-size: 0.9rem; }
 .ft-tl-msg { color: var(--ft-slate); font-size: 0.83rem; margin-top: 2px; }
 
-.ft-item {
-    border: 1px solid var(--ft-border); border-radius: 14px;
+.ft-item { border: 1px solid var(--ft-border); border-radius: 14px;
     padding: 16px 18px; background: #fff; margin-bottom: 12px;
-    box-shadow: var(--ft-shadow);
-}
+    box-shadow: var(--ft-shadow); }
 .ft-item-title { font-weight: 700; color: var(--ft-navy); font-size: 0.95rem; }
 .ft-item-desc { color: var(--ft-slate); font-size: 0.86rem; margin-top: 6px; line-height: 1.5; }
-.ft-sev {
-    display: inline-block; padding: 3px 9px; border-radius: 999px;
-    font-size: 0.7rem; font-weight: 700; letter-spacing: 0.04em;
-    margin-left: 8px;
-}
+.ft-sev { display: inline-block; padding: 3px 9px; border-radius: 999px;
+    font-size: 0.7rem; font-weight: 700; letter-spacing: 0.04em; margin-left: 8px; }
 .ft-sev-HIGH { background: rgba(239,68,68,0.12); color: #b91c1c; }
 .ft-sev-MEDIUM { background: rgba(245,158,11,0.12); color: #b45309; }
 .ft-sev-LOW { background: rgba(16,185,129,0.12); color: #047857; }
 
-.ft-hero {
-    background: linear-gradient(135deg, #ffffff 0%, #f2f7ff 100%);
-    border: 1px solid var(--ft-border);
-    border-radius: 20px;
-    padding: 40px 44px;
-    box-shadow: var(--ft-shadow);
-    margin-bottom: 22px;
-}
-.ft-hero h1 {
-    font-size: 2.2rem; font-weight: 800; color: var(--ft-navy);
-    letter-spacing: -0.03em; margin: 0 0 8px 0;
-}
+.ft-hero { background: linear-gradient(135deg, #ffffff 0%, #f2f7ff 100%);
+    border: 1px solid var(--ft-border); border-radius: 20px;
+    padding: 40px 44px; box-shadow: var(--ft-shadow); margin-bottom: 22px; }
+.ft-hero h1 { font-size: 2.2rem; font-weight: 800; color: var(--ft-navy);
+    letter-spacing: -0.03em; margin: 0 0 8px 0; }
 .ft-hero p { color: var(--ft-slate); font-size: 1rem; line-height: 1.6; margin: 0; max-width: 640px; }
 
-.stButton > button {
-    border-radius: 10px; font-weight: 600; border: 1px solid var(--ft-border);
-    background: #fff; color: var(--ft-navy);
-    transition: all .15s ease;
-}
+.stButton > button { border-radius: 10px; font-weight: 600;
+    border: 1px solid var(--ft-border); background: #fff; color: var(--ft-navy);
+    transition: all .15s ease; }
 .stButton > button:hover { border-color: var(--ft-blue); color: var(--ft-blue); }
 .stButton > button[kind="primary"] {
     background: linear-gradient(135deg, #2563eb, #3b82f6);
-    color: #fff; border: none;
-    box-shadow: 0 4px 14px rgba(37,99,235,0.28);
-}
-.stButton > button[kind="primary"]:hover { box-shadow: 0 6px 20px rgba(37,99,235,0.36); }
+    color: #fff; border: none; box-shadow: 0 4px 14px rgba(37,99,235,0.28); }
 
 [data-testid="stDataFrame"] { border: 1px solid var(--ft-border); border-radius: 12px; overflow: hidden; }
-
-.stTabs [data-baseweb="tab-list"] { gap: 6px; }
-.stTabs [data-baseweb="tab"] {
-    border-radius: 9px 9px 0 0; font-weight: 600; color: var(--ft-slate);
-}
-.stTabs [aria-selected="true"] { color: var(--ft-blue) !important; }
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
@@ -268,10 +178,6 @@ st.markdown(CSS, unsafe_allow_html=True)
 
 def _get_state() -> FinancialState:
     return get_financial_state()
-
-
-def _reset_state() -> None:
-    reset_financial_state()
 
 
 def _get_config() -> Dict[str, bool]:
@@ -294,11 +200,7 @@ def fmt_pct(v: float) -> str:
 
 
 def kpi_card(label: str, value: str, sub: str = "", accent: str = "") -> str:
-    accent_class = {
-        "blue": "ft-kpi-accent",
-        "green": "ft-kpi-green",
-        "red": "ft-kpi-red",
-    }.get(accent, "")
+    accent_class = {"blue": "ft-kpi-accent", "green": "ft-kpi-green", "red": "ft-kpi-red"}.get(accent, "")
     return f"""
     <div class="ft-card">
         <div class="ft-kpi-label">{label}</div>
@@ -314,23 +216,16 @@ def severity_badge(sev: str) -> str:
 
 
 def _render_progress(placeholder, state: FinancialState) -> None:
-    icons = {
-        "pending": ("○", "pending"),
-        "running": ("◐", "pending"),
-        "complete": ("✓", "complete"),
-        "revise": ("↻", "revise"),
-        "error": ("✕", "revise"),
-    }
+    icons = {"pending": ("○", "pending"), "running": ("◐", "pending"),
+             "complete": ("✓", "complete"), "revise": ("↻", "revise"),
+             "error": ("✕", "revise")}
     rows = []
     for name, status in state.agent_status.items():
         icon, css = icons.get(status["status"], ("○", "pending"))
         msg = status.get("message") or {
-            "pending": "Pending",
-            "running": "Working…",
-            "complete": "Complete",
-            "revise": "Revision required",
-            "error": "Error",
-        }.get(status["status"], "")
+            "pending": "Pending", "running": "Working…",
+            "complete": "Complete", "revise": "Revision required",
+            "error": "Error"}.get(status["status"], "")
         rows.append(
             f'<div class="ft-tl-item">'
             f'<div class="ft-tl-icon {css}">{icon}</div>'
@@ -367,12 +262,11 @@ def _run_pipeline(df_raw: pd.DataFrame, progress_placeholder) -> FinancialState:
         f"{state.quality['clean_rows']} transactions cleaned",
         "; ".join(result["errors"]) or "All rows valid.",
     )
-    time.sleep(0.1)
+    time.sleep(0.05)
     _render_progress(progress_placeholder, state)
 
     if state.df.empty:
         state.set_status("Data Agent", "error", "No valid rows after cleaning.")
-        _render_progress(progress_placeholder, state)
         return state
 
     state.set_status("Categorization Agent", "running")
@@ -382,9 +276,9 @@ def _run_pipeline(df_raw: pd.DataFrame, progress_placeholder) -> FinancialState:
     state.set_status(
         "Categorization Agent", "complete",
         f"{cat['classified']} transactions classified",
-        f"Method: {cat['method']} • categories: {len(cat['counts'])}",
+        f"Method: {cat['method']} • {len(cat['counts'])} categories",
     )
-    time.sleep(0.1)
+    time.sleep(0.05)
     _render_progress(progress_placeholder, state)
 
     state.set_status("Analytics Agent", "running")
@@ -393,10 +287,9 @@ def _run_pipeline(df_raw: pd.DataFrame, progress_placeholder) -> FinancialState:
     state.set_status(
         "Analytics Agent", "complete",
         f"{len(state.stats['evidence'])} financial patterns analyzed",
-        f"Revenue {fmt_money(state.stats['total_revenue'])} • "
-        f"Expenses {fmt_money(state.stats['total_expenses'])}",
+        f"Revenue {fmt_money(state.stats['total_revenue'])} • Expenses {fmt_money(state.stats['total_expenses'])}",
     )
-    time.sleep(0.1)
+    time.sleep(0.05)
     _render_progress(progress_placeholder, state)
 
     state.set_status("Risk Agent", "running")
@@ -405,9 +298,9 @@ def _run_pipeline(df_raw: pd.DataFrame, progress_placeholder) -> FinancialState:
     state.set_status(
         "Risk Agent", "complete",
         f"{len(state.risk['risks'])} risk(s) detected",
-        f"Risk level: {state.risk['risk_level']} ({state.risk['risk_score']}/100)",
+        f"Level: {state.risk['risk_level']} ({state.risk['risk_score']}/100)",
     )
-    time.sleep(0.1)
+    time.sleep(0.05)
     _render_progress(progress_placeholder, state)
 
     state.set_status("Opportunity Agent", "running")
@@ -416,9 +309,9 @@ def _run_pipeline(df_raw: pd.DataFrame, progress_placeholder) -> FinancialState:
     state.set_status(
         "Opportunity Agent", "complete",
         f"{len(state.opportunity['opportunities'])} opportunit(ies) identified",
-        f"Opportunity score: {state.opportunity['opportunity_score']}/100",
+        f"Score: {state.opportunity['opportunity_score']}/100",
     )
-    time.sleep(0.1)
+    time.sleep(0.05)
     _render_progress(progress_placeholder, state)
 
     state.set_status("Decision Agent", "running")
@@ -430,24 +323,15 @@ def _run_pipeline(df_raw: pd.DataFrame, progress_placeholder) -> FinancialState:
     state.critic = critic
     state.revision_count = revisions
 
-    state.set_status(
-        "Decision Agent", "complete",
+    state.set_status("Decision Agent", "complete",
         decision.get("title", "Decision made"),
-        f"Priority: {decision.get('priority', '—')}",
-    )
+        f"Priority: {decision.get('priority', '—')}")
     if revisions > 0:
-        state.set_status(
-            "Critic Agent", "complete",
-            f"Decision revised {revisions}× then approved",
-            loop_summary,
-        )
+        state.set_status("Critic Agent", "complete",
+            f"Decision revised {revisions}× then approved", loop_summary)
     else:
-        state.set_status(
-            "Critic Agent", "complete",
-            "Decision verified",
-            loop_summary,
-        )
-    time.sleep(0.1)
+        state.set_status("Critic Agent", "complete", "Decision verified", loop_summary)
+    time.sleep(0.05)
     _render_progress(progress_placeholder, state)
 
     state.set_status("Insight Agent", "running")
@@ -460,12 +344,9 @@ def _run_pipeline(df_raw: pd.DataFrame, progress_placeholder) -> FinancialState:
         health_score, health_label,
         use_ai=config["use_ai_insights"],
     )
-    state.set_status(
-        "Insight Agent", "complete",
-        "Financial briefing generated",
-        f"Health: {health_score}/100 — {health_label}",
-    )
-    time.sleep(0.1)
+    state.set_status("Insight Agent", "complete", "Financial briefing generated",
+        f"Health: {health_score}/100 — {health_label}")
+    time.sleep(0.05)
     _render_progress(progress_placeholder, state)
 
     return state
@@ -483,55 +364,42 @@ def cash_flow_chart(monthly: list) -> go.Figure:
     fig.add_bar(x=months, y=rev, name="Revenue", marker_color="#93c5fd", marker_line_width=0)
     fig.add_bar(x=months, y=exp, name="Expenses", marker_color="#fca5a5", marker_line_width=0)
     fig.add_trace(go.Scatter(
-        x=months, y=net, name="Net Cash Flow",
-        mode="lines+markers",
+        x=months, y=net, name="Net Cash Flow", mode="lines+markers",
         line=dict(color="#2563eb", width=3),
         marker=dict(size=9, color="#2563eb", line=dict(color="white", width=2)),
     ))
     fig.update_layout(
-        barmode="group",
-        plot_bgcolor="white", paper_bgcolor="white",
+        barmode="group", plot_bgcolor="white", paper_bgcolor="white",
         font=dict(family="Inter, sans-serif", color="#334155", size=12),
-        margin=dict(l=10, r=10, t=10, b=10),
-        height=340,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, bgcolor="rgba(0,0,0,0)"),
+        margin=dict(l=10, r=10, t=10, b=10), height=340,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         xaxis=dict(showgrid=False, linecolor="#e2e8f0"),
-        yaxis=dict(showgrid=True, gridcolor="#f1f5f9", zerolinecolor="#cbd5e1", tickprefix="$", tickformat=",.0f"),
-        hoverlabel=dict(bgcolor="white", bordercolor="#e2e8f0", font_size=12),
+        yaxis=dict(showgrid=True, gridcolor="#f1f5f9", zerolinecolor="#cbd5e1",
+                   tickprefix="$", tickformat=",.0f"),
     )
     return fig
 
 
 def health_gauge(score: int, label: str) -> go.Figure:
-    color = (
-        "#10b981" if score >= 80 else
-        "#22c55e" if score >= 60 else
-        "#f59e0b" if score >= 40 else "#ef4444"
-    )
-    fig = go.Figure(
-        go.Indicator(
-            mode="gauge+number",
-            value=score,
-            number={"suffix": " / 100", "font": {"size": 30, "color": "#0f172a", "family": "Inter"}},
-            gauge={
-                "axis": {"range": [0, 100], "tickwidth": 1, "tickcolor": "#cbd5e1",
-                         "tickfont": {"size": 10, "color": "#94a3b8"}},
-                "bar": {"color": color, "thickness": 0.28},
-                "bgcolor": "#f1f5f9",
-                "borderwidth": 0,
-                "steps": [
-                    {"range": [0, 40], "color": "rgba(239,68,68,0.08)"},
-                    {"range": [40, 60], "color": "rgba(245,158,11,0.08)"},
-                    {"range": [60, 80], "color": "rgba(34,197,94,0.08)"},
-                    {"range": [80, 100], "color": "rgba(16,185,129,0.10)"},
-                ],
-            },
-        )
-    )
-    fig.update_layout(
-        height=210, margin=dict(l=10, r=10, t=10, b=10),
-        paper_bgcolor="white", font=dict(family="Inter, sans-serif"),
-    )
+    color = ("#10b981" if score >= 80 else "#22c55e" if score >= 60
+             else "#f59e0b" if score >= 40 else "#ef4444")
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number", value=score,
+        number={"suffix": " / 100", "font": {"size": 30, "color": "#0f172a"}},
+        gauge={
+            "axis": {"range": [0, 100], "tickwidth": 1, "tickcolor": "#cbd5e1"},
+            "bar": {"color": color, "thickness": 0.28},
+            "bgcolor": "#f1f5f9", "borderwidth": 0,
+            "steps": [
+                {"range": [0, 40], "color": "rgba(239,68,68,0.08)"},
+                {"range": [40, 60], "color": "rgba(245,158,11,0.08)"},
+                {"range": [60, 80], "color": "rgba(34,197,94,0.08)"},
+                {"range": [80, 100], "color": "rgba(16,185,129,0.10)"},
+            ],
+        },
+    ))
+    fig.update_layout(height=210, margin=dict(l=10, r=10, t=10, b=10),
+                      paper_bgcolor="white", font=dict(family="Inter, sans-serif"))
     return fig
 
 
@@ -559,20 +427,24 @@ def render_landing() -> None:
     with col1:
         st.markdown("#### Upload your transactions")
         uploaded = st.file_uploader(
-            "CSV with columns: date, description, amount",
-            type=["csv"],
+            "Upload a CSV, TSV, Excel, or TXT file",
+            type=["csv", "tsv", "txt", "xlsx", "xls"],
             label_visibility="collapsed",
         )
         st.markdown(
             "<div style='color:#64748b;font-size:0.82rem;margin-top:6px;'>"
-            "Positive amounts = income · Negative amounts = expenses"
+            "Any column names · Date + amount (or debit/credit) auto-detected · "
+            "CSV, TSV, Excel supported · Positive = income"
             "</div>",
             unsafe_allow_html=True,
         )
         st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
-        use_sample = st.button("Try sample data", use_container_width=True)
-        st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
-        start = st.button("Run AI Analysis", type="primary", use_container_width=True)
+
+        b1, b2 = st.columns(2)
+        with b1:
+            use_sample = st.button("Try sample data", use_container_width=True)
+        with b2:
+            start = st.button("Run AI Analysis", type="primary", use_container_width=True)
 
     with col2:
         st.markdown(
@@ -595,19 +467,35 @@ def render_landing() -> None:
         )
 
     df_raw = None
-    if start:
-        if uploaded is not None:
-            try:
-                df_raw = load_csv(uploaded.getvalue())
-            except Exception as exc:
-                st.error(f"Could not read file: {exc}")
-        elif use_sample:
-            try:
-                df_raw = load_csv("sample_data/sample_transactions.csv")
-            except Exception as exc:
-                st.error(f"Could not load sample data: {exc}")
-        else:
-            st.warning("Please upload a CSV or click 'Try sample data' first.")
+
+    if use_sample:
+        sample_path = ROOT / "sample_data" / "sample_transactions.csv"
+        if not sample_path.exists():
+            # Fallback: try any file in sample_data
+            sample_dir = ROOT / "sample_data"
+            if sample_dir.exists():
+                candidates = list(sample_dir.glob("*.csv"))
+                if candidates:
+                    sample_path = candidates[0]
+        if not sample_path.exists():
+            st.error(f"Sample file not found at {sample_path}.")
+            return
+        try:
+            df_raw = load_csv(str(sample_path), filename=str(sample_path))
+            st.success(f"Loaded sample data: {len(df_raw)} rows")
+        except Exception as exc:
+            st.error(f"Could not load sample data: {exc}")
+            return
+
+    elif start:
+        if uploaded is None:
+            st.warning("Please upload a file first, or click 'Try sample data'.")
+            return
+        try:
+            df_raw = load_csv(uploaded.getvalue(), filename=uploaded.name)
+        except Exception as exc:
+            st.error(f"Could not read file: {exc}")
+            return
 
     if df_raw is not None:
         _execute_analysis(df_raw)
@@ -615,25 +503,33 @@ def render_landing() -> None:
 
 def _execute_analysis(df_raw: pd.DataFrame) -> None:
     st.markdown("### Analyzing your financial data…")
+
+    # Clear previous state BEFORE running so no stale data survives
+    reset_financial_state()
+    reset_vector_store()
+    for k in ("copilot_history", "analysis_done"):
+        st.session_state.pop(k, None)
+
     progress_placeholder = st.empty()
     state = _get_state()
 
     with st.spinner("Agents are working…"):
         state = _run_pipeline(df_raw, progress_placeholder)
 
-    if state.errors and state.df is None:
+    if state.errors and (state.df is None or state.df.empty):
         st.error("Analysis failed: " + "; ".join(state.errors))
         return
 
-    st.success("Analysis complete. Open a page from the sidebar to explore results.")
+    st.success("Analysis complete. Use the sidebar to explore, or 'Upload new file' to start over.")
     st.session_state["analysis_done"] = True
+    st.session_state["show_landing"] = False
     time.sleep(0.3)
     st.rerun()
 
 
 def render_overview(state: FinancialState) -> None:
     if not state.is_complete():
-        st.info("No analysis yet. Go to **Overview** and run an analysis to populate this page.")
+        st.info("No analysis yet. Upload a file on the landing screen.")
         return
 
     stats = state.stats
@@ -648,9 +544,7 @@ def render_overview(state: FinancialState) -> None:
                 <div class="ft-h1">Financial Intelligence</div>
                 <div class="ft-sub">AI-powered financial analysis for your business</div>
             </div>
-            """,
-            unsafe_allow_html=True,
-        )
+            """, unsafe_allow_html=True)
     with head_r:
         st.markdown(
             f"""
@@ -660,9 +554,7 @@ def render_overview(state: FinancialState) -> None:
                     {stats['num_transactions']} transactions analyzed
                 </div>
             </div>
-            """,
-            unsafe_allow_html=True,
-        )
+            """, unsafe_allow_html=True)
 
     st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
 
@@ -687,7 +579,6 @@ def render_overview(state: FinancialState) -> None:
     st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
 
     left, right = st.columns([1, 1.6])
-
     with left:
         st.markdown('<div class="ft-card"><div class="ft-kpi-label">Financial Health</div></div>',
                     unsafe_allow_html=True)
@@ -696,16 +587,12 @@ def render_overview(state: FinancialState) -> None:
         st.markdown(
             f"""
             <div style="margin-top:-12px;text-align:center;">
-                <span class="ft-badge {'ft-badge-red' if health_score < 40 else ''}">
-                    ● {health_label}
-                </span>
+                <span class="ft-badge {'ft-badge-red' if health_score < 40 else ''}">● {health_label}</span>
                 <div style="color:#64748b;font-size:0.8rem;margin-top:8px;">
                     Based on cash flow, expense ratio, spending patterns and detected risks.
                 </div>
             </div>
-            """,
-            unsafe_allow_html=True,
-        )
+            """, unsafe_allow_html=True)
 
     with right:
         d = state.decision
@@ -722,7 +609,7 @@ def render_overview(state: FinancialState) -> None:
         st.markdown(
             f"""
             <div class="ft-decision">
-                <div class="ft-decision-label">AI DECISION &nbsp;·&nbsp; {critic_icon} {critic_txt}</div>
+                <div class="ft-decision-label">AI DECISION · {critic_icon} {critic_txt}</div>
                 <div class="ft-decision-title">{d.get('title', '—')}</div>
                 <div class="ft-decision-body">{d.get('decision', '')}</div>
                 <div class="ft-decision-grid">
@@ -737,9 +624,7 @@ def render_overview(state: FinancialState) -> None:
                 </div>
                 {revision_line}
             </div>
-            """,
-            unsafe_allow_html=True,
-        )
+            """, unsafe_allow_html=True)
 
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
 
@@ -755,11 +640,14 @@ def render_overview(state: FinancialState) -> None:
     rows = []
     for name, s in state.agent_status.items():
         status = s["status"]
-        icon = {"complete": "✓", "running": "◐", "pending": "○", "error": "✕", "revise": "↻"}.get(status, "○")
-        css = "pending" if status in {"pending", "running"} else ("revise" if status in {"error", "revise"} else "")
+        icon = {"complete": "✓", "running": "◐", "pending": "○",
+                "error": "✕", "revise": "↻"}.get(status, "○")
+        css = "pending" if status in {"pending", "running"} else (
+            "revise" if status in {"error", "revise"} else "")
         msg = s.get("message") or status.title()
         detail = s.get("detail", "")
-        detail_html = f'<div class="ft-tl-msg" style="font-size:0.78rem;color:#94a3b8;">{detail}</div>' if detail else ""
+        detail_html = (f'<div class="ft-tl-msg" style="font-size:0.78rem;color:#94a3b8;">'
+                       f'{detail}</div>') if detail else ""
         rows.append(
             f'<div class="ft-tl-item">'
             f'<div class="ft-tl-icon {css}">{icon}</div>'
@@ -782,41 +670,37 @@ def render_overview(state: FinancialState) -> None:
             st.markdown(
                 '<div class="ft-item"><div class="ft-item-title">No material risks detected</div>'
                 '<div class="ft-item-desc">Cash flow, expense ratio, and concentration are within healthy bounds.</div></div>',
-                unsafe_allow_html=True,
-            )
+                unsafe_allow_html=True)
         for r in risks[:3]:
             st.markdown(
                 f'<div class="ft-item">'
                 f'<div class="ft-item-title">{r["title"]}{severity_badge(r.get("severity","LOW"))}</div>'
                 f'<div class="ft-item-desc">{r["description"]}</div>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
+                f'</div>', unsafe_allow_html=True)
+
     with oc:
         opps = state.opportunity.get("opportunities", [])
         if not opps:
             st.markdown(
                 '<div class="ft-item"><div class="ft-item-title">No major opportunities detected</div>'
                 '<div class="ft-item-desc">Current spending and cash flow look optimized.</div></div>',
-                unsafe_allow_html=True,
-            )
+                unsafe_allow_html=True)
         for o in opps[:3]:
             st.markdown(
                 f'<div class="ft-item">'
                 f'<div class="ft-item-title">↑ {o["title"]}{severity_badge(o.get("impact","LOW"))}</div>'
                 f'<div class="ft-item-desc">{o["description"]}</div>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
+                f'</div>', unsafe_allow_html=True)
 
 
 def main() -> None:
     state = _get_state()
     render_sidebar()
 
-    if not state.is_complete() and not st.session_state.get("analysis_done"):
-        render_landing()
-    elif not state.is_complete():
+    show_landing = st.session_state.get("show_landing", False)
+
+    if show_landing or not state.is_complete():
+        st.session_state["show_landing"] = False
         render_landing()
     else:
         render_overview(state)
