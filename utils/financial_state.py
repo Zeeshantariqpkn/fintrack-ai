@@ -3,6 +3,7 @@ Centralized financial state for FinTrack AI.
 """
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field, asdict
 from typing import Any, Dict, List, Optional
 
@@ -30,6 +31,7 @@ def empty_agent_status() -> Dict[str, Dict[str, Any]]:
 
 @dataclass
 class FinancialState:
+    run_id: float = field(default_factory=time.time)
     df: Optional[pd.DataFrame] = None
     quality: Dict[str, Any] = field(default_factory=dict)
     stats: Dict[str, Any] = field(default_factory=dict)
@@ -103,12 +105,8 @@ class FinancialState:
         return "At Risk"
 
 
-# =====================================================================
-# Convenience accessors used by every page
-# =====================================================================
 def get_financial_state() -> FinancialState:
     import streamlit as st
-
     if "fin_state" not in st.session_state:
         st.session_state.fin_state = FinancialState()
     return st.session_state.fin_state
@@ -116,6 +114,5 @@ def get_financial_state() -> FinancialState:
 
 def reset_financial_state() -> FinancialState:
     import streamlit as st
-
     st.session_state.fin_state = FinancialState()
     return st.session_state.fin_state
