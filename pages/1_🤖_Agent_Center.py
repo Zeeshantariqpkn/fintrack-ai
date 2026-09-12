@@ -1,5 +1,5 @@
 """
-Agent Center — the complete agentic workflow, visualized.
+Agent Center — the complete agentic workflow.
 """
 from __future__ import annotations
 
@@ -22,10 +22,9 @@ CSS = """
 .ft-card { background:#fff; border:1px solid #e2e8f0; border-radius:16px;
     padding:20px 22px; box-shadow:0 1px 2px rgba(15,23,42,.04),0 4px 16px rgba(15,23,42,.06); margin-bottom:14px; }
 .ft-agent-title { font-size:1.05rem; font-weight:800; color:#0f172a; display:flex;
-    align-items:center; gap:10px; letter-spacing:-0.01em; }
+    align-items:center; gap:10px; }
 .ft-agent-icon { width:34px;height:34px;border-radius:10px;display:flex;align-items:center;
-    justify-content:center;font-size:1rem; background:linear-gradient(135deg,#2563eb,#3b82f6); color:#fff;
-    box-shadow:0 4px 12px rgba(37,99,235,.28); }
+    justify-content:center;font-size:1rem; background:linear-gradient(135deg,#2563eb,#3b82f6); color:#fff; }
 .ft-status-pill { display:inline-block;padding:3px 10px;border-radius:999px;font-size:.7rem;
     font-weight:700;letter-spacing:.04em;text-transform:uppercase; }
 .ft-st-complete { background:rgba(16,185,129,.12); color:#047857; }
@@ -49,20 +48,14 @@ render_sidebar()
 
 
 def _status_pill(status: str) -> str:
-    cls = {
-        "complete": "ft-st-complete",
-        "running": "ft-st-running",
-        "pending": "ft-st-pending",
-        "error": "ft-st-error",
-        "revise": "ft-st-error",
-    }.get(status, "ft-st-pending")
+    cls = {"complete": "ft-st-complete", "running": "ft-st-running",
+           "pending": "ft-st-pending", "error": "ft-st-error",
+           "revise": "ft-st-error"}.get(status, "ft-st-pending")
     return f'<span class="ft-status-pill {cls}">{status}</span>'
 
 
-def _agent_card(
-    name: str, icon: str, responsibility: str, inputs: str, output: str,
-    reasoning: str, evidence: str, status: str, status_msg: str,
-) -> None:
+def _agent_card(name, icon, responsibility, inputs, output, reasoning,
+                evidence, status, status_msg) -> None:
     st.markdown(
         f"""
         <div class="ft-card">
@@ -78,19 +71,15 @@ def _agent_card(
             <div class="ft-row"><div class="k">Evidence</div><div class="v"><div class="ft-evidence">{evidence}</div></div></div>
             <div class="ft-row"><div class="k">Status</div><div class="v">{status_msg or status.title()}</div></div>
         </div>
-        """,
-        unsafe_allow_html=True,
-    )
+        """, unsafe_allow_html=True)
 
 
 def main() -> None:
     state: FinancialState = get_financial_state()
 
     st.markdown('<div class="ft-h1">Agent Center</div>', unsafe_allow_html=True)
-    st.markdown(
-        '<div class="ft-sub">Every agent, its responsibility, its reasoning, and the evidence it used.</div>',
-        unsafe_allow_html=True,
-    )
+    st.markdown('<div class="ft-sub">Every agent, its responsibility, reasoning, and evidence.</div>',
+                unsafe_allow_html=True)
     st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
 
     if not state.agent_status or all(s["status"] == "pending" for s in state.agent_status.values()):
@@ -102,23 +91,15 @@ def main() -> None:
         """
         <div class="ft-card" style="text-align:center;font-family:ui-monospace,Menlo,monospace;
              font-size:.85rem;color:#334155;line-height:1.9;">
-            <div><b>DATA</b></div>
-            <div class="ft-arrow">↓</div>
-            <div><b>CATEGORIZE</b></div>
-            <div class="ft-arrow">↓</div>
-            <div><b>ANALYZE</b></div>
-            <div class="ft-arrow">↓</div>
-            <div><b>RISK</b> &nbsp;·&nbsp; <b>OPPORTUNITY</b></div>
-            <div class="ft-arrow">↓</div>
-            <div><b>DECISION</b></div>
-            <div class="ft-arrow">↓</div>
-            <div><b>CRITIC</b></div>
-            <div class="ft-arrow">↓</div>
+            <div><b>DATA</b></div><div class="ft-arrow">↓</div>
+            <div><b>CATEGORIZE</b></div><div class="ft-arrow">↓</div>
+            <div><b>ANALYZE</b></div><div class="ft-arrow">↓</div>
+            <div><b>RISK</b> · <b>OPPORTUNITY</b></div><div class="ft-arrow">↓</div>
+            <div><b>DECISION</b></div><div class="ft-arrow">↓</div>
+            <div><b>CRITIC</b></div><div class="ft-arrow">↓</div>
             <div><b>INSIGHT</b></div>
         </div>
-        """,
-        unsafe_allow_html=True,
-    )
+        """, unsafe_allow_html=True)
     st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
 
     if state.critic:
@@ -135,9 +116,7 @@ def main() -> None:
                         ({state.revision_count} revision(s)) → <b>Approved</b>
                     </div>
                 </div>
-                """,
-                unsafe_allow_html=True,
-            )
+                """, unsafe_allow_html=True)
         else:
             st.markdown(
                 """
@@ -150,114 +129,102 @@ def main() -> None:
                         Decision Agent → Critic Agent → <b>✓ Decision Verified</b>
                     </div>
                 </div>
-                """,
-                unsafe_allow_html=True,
-            )
+                """, unsafe_allow_html=True)
         st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 
     a = state.agent_status
 
     if state.quality:
         _agent_card(
-            name="Data Agent", icon="①",
-            responsibility="Loads CSV, normalizes columns, validates rows, parses dates and amounts, and reports data quality.",
-            inputs="Raw uploaded CSV",
-            output=f"{state.quality.get('clean_rows', 0)} clean transactions · "
-                   f"{state.quality.get('income_rows', 0)} income / {state.quality.get('expense_rows', 0)} expense",
-            reasoning=f"Normalized columns and dropped {state.quality.get('dropped_rows', 0)} invalid row(s). "
-                      f"Date range: {state.quality.get('date_range', 'n/a')}.",
-            evidence=f"original={state.quality.get('original_rows')} · clean={state.quality.get('clean_rows')} · "
-                     f"dropped={state.quality.get('dropped_rows')}",
-            status=a["Data Agent"]["status"], status_msg=a["Data Agent"]["message"],
+            "Data Agent", "①",
+            "Loads file, normalizes columns, validates rows, parses dates and amounts.",
+            "Raw uploaded file",
+            f"{state.quality.get('clean_rows', 0)} clean · "
+            f"{state.quality.get('income_rows', 0)} income / {state.quality.get('expense_rows', 0)} expense",
+            f"Detected: {state.quality.get('detected_columns', {})}",
+            f"original={state.quality.get('original_rows')} · clean={state.quality.get('clean_rows')} · "
+            f"dropped={state.quality.get('dropped_rows')}",
+            a["Data Agent"]["status"], a["Data Agent"]["message"],
         )
 
     if state.df is not None and "category" in state.df.columns:
         counts = state.df["category"].value_counts().to_dict()
         _agent_card(
-            name="Categorization Agent", icon="②",
-            responsibility="Classifies every transaction into one of the fixed categories using Groq or keyword fallback.",
-            inputs=f"{len(state.df)} cleaned transactions",
-            output=", ".join(f"{k}: {v}" for k, v in list(counts.items())[:5]),
-            reasoning="Enforced the category set — no invalid categories can escape. "
-                      "AI used when GROQ_API_KEY is present, otherwise deterministic keyword matching.",
-            evidence=f"categories={len(counts)} · avg_confidence={state.df['category_confidence'].mean():.2f}",
-            status=a["Categorization Agent"]["status"], status_msg=a["Categorization Agent"]["message"],
+            "Categorization Agent", "②",
+            "Classifies every transaction into a fixed category set.",
+            f"{len(state.df)} cleaned transactions",
+            ", ".join(f"{k}: {v}" for k, v in list(counts.items())[:5]),
+            "AI used when GROQ_API_KEY present; keyword fallback otherwise.",
+            f"categories={len(counts)} · avg_conf={state.df['category_confidence'].mean():.2f}",
+            a["Categorization Agent"]["status"], a["Categorization Agent"]["message"],
         )
 
     if state.stats:
         s = state.stats
         _agent_card(
-            name="Analytics Agent", icon="③",
-            responsibility="Computes revenue, expenses, cash flow, ratios, monthly series, vendors, recurring expenses, and trends.",
-            inputs="Categorized transaction DataFrame",
-            output=f"Revenue {s['total_revenue']:,.0f} · Expenses {s['total_expenses']:,.0f} · "
-                   f"Net {s['net_cash_flow']:,.0f} · Ratio {s['expense_ratio']:.1f}%",
-            reasoning=f"Built {len(s['evidence'])} structured evidence items. "
-                      f"Largest category: {s.get('largest_category', 'n/a')}. "
-                      f"Top vendor: {s.get('top_vendor', 'n/a')}.",
-            evidence="<br>".join(e["interpretation"] for e in s["evidence"][:6]),
-            status=a["Analytics Agent"]["status"], status_msg=a["Analytics Agent"]["message"],
+            "Analytics Agent", "③",
+            "Computes revenue, expenses, cash flow, ratios, trends, vendors.",
+            "Categorized transactions",
+            f"Revenue {s['total_revenue']:,.0f} · Expenses {s['total_expenses']:,.0f} · "
+            f"Net {s['net_cash_flow']:,.0f} · Ratio {s['expense_ratio']:.1f}%",
+            f"{len(s['evidence'])} evidence items built.",
+            "<br>".join(e["interpretation"] for e in s["evidence"][:6]),
+            a["Analytics Agent"]["status"], a["Analytics Agent"]["message"],
         )
 
     if state.risk:
         r = state.risk
         _agent_card(
-            name="Risk Agent", icon="④",
-            responsibility="Independently reasons over analytics to detect financial risks, each backed by evidence.",
-            inputs="Analytics Agent evidence set",
-            output=f"{len(r['risks'])} risk(s) · level {r['risk_level']} · score {r['risk_score']}/100",
-            reasoning=r["reasoning"],
-            evidence="<br>".join(r["evidence"]) or "No risks — all checks passed.",
-            status=a["Risk Agent"]["status"], status_msg=a["Risk Agent"]["message"],
+            "Risk Agent", "④", "Detects financial risks with severity and evidence.",
+            "Analytics evidence",
+            f"{len(r['risks'])} risk(s) · {r['risk_level']} · {r['risk_score']}/100",
+            r["reasoning"],
+            "<br>".join(r["evidence"]) or "No risks.",
+            a["Risk Agent"]["status"], a["Risk Agent"]["message"],
         )
 
     if state.opportunity:
         o = state.opportunity
         _agent_card(
-            name="Opportunity Agent", icon="⑤",
-            responsibility="Searches for financial opportunities: cost optimization, vendor renegotiation, subscription review, growth.",
-            inputs="Analytics Agent evidence set",
-            output=f"{len(o['opportunities'])} opportunity(ies) · score {o['opportunity_score']}/100",
-            reasoning=o["reasoning"],
-            evidence="<br>".join(o["evidence"]) or "No material opportunities detected.",
-            status=a["Opportunity Agent"]["status"], status_msg=a["Opportunity Agent"]["message"],
+            "Opportunity Agent", "⑤", "Searches for financial opportunities.",
+            "Analytics evidence",
+            f"{len(o['opportunities'])} opportunity(ies) · {o['opportunity_score']}/100",
+            o["reasoning"],
+            "<br>".join(o["evidence"]) or "None detected.",
+            a["Opportunity Agent"]["status"], a["Opportunity Agent"]["message"],
         )
 
     if state.decision:
         d = state.decision
         _agent_card(
-            name="Decision Agent", icon="⑥",
-            responsibility="Weighs risks + opportunities + analytics to choose the single most important business action.",
-            inputs="Risk Agent output + Opportunity Agent output + Analytics evidence",
-            output=f"{d.get('title', '—')} · priority {d.get('priority', '—')}",
-            reasoning=d.get("reasoning", ""),
-            evidence="<br>".join(d.get("evidence", [])) or "Evidence attached to decision.",
-            status=a["Decision Agent"]["status"], status_msg=a["Decision Agent"]["message"],
+            "Decision Agent", "⑥", "Weighs risks + opportunities to pick the top action.",
+            "Risk + Opportunity + Analytics",
+            f"{d.get('title', '—')} · priority {d.get('priority', '—')}",
+            d.get("reasoning", ""),
+            "<br>".join(d.get("evidence", [])) or "Evidence attached.",
+            a["Decision Agent"]["status"], a["Decision Agent"]["message"],
         )
 
     if state.critic:
         c = state.critic
         _agent_card(
-            name="Critic Agent", icon="⑦",
-            responsibility="Independently verifies the Decision Agent: checks evidence, consistency with risks/opportunities, and practicality.",
-            inputs="Decision Agent output + Risk + Opportunity + Analytics",
-            output=f"Status: {c.get('status', '—')} · "
-                   f"{'Approved' if c.get('approved') else 'Revision required'}",
-            reasoning=c.get("reasoning", ""),
-            evidence="<br>".join(c.get("evidence", [])) or "Verification checks performed.",
-            status=a["Critic Agent"]["status"], status_msg=a["Critic Agent"]["message"],
+            "Critic Agent", "⑦", "Independently verifies the decision.",
+            "Decision + Risk + Opportunity",
+            f"{c.get('status', '—')}",
+            c.get("reasoning", ""),
+            "<br>".join(c.get("evidence", [])) or "Checks performed.",
+            a["Critic Agent"]["status"], a["Critic Agent"]["message"],
         )
 
     if state.summary:
         sm = state.summary
         _agent_card(
-            name="Insight Agent", icon="⑧",
-            responsibility="Generates the executive financial briefing from the approved decision and full state.",
-            inputs="All previous agent outputs",
-            output=f"{sm.get('health_score', 0)}/100 — {sm.get('health_label', '')}",
-            reasoning=sm.get("narrative", "")[:400] + ("…" if len(sm.get("narrative", "")) > 400 else ""),
-            evidence=f"method={sm.get('method', 'deterministic')}",
-            status=a["Insight Agent"]["status"], status_msg=a["Insight Agent"]["message"],
+            "Insight Agent", "⑧", "Generates the executive briefing.",
+            "All prior state",
+            f"{sm.get('health_score', 0)}/100 — {sm.get('health_label', '')}",
+            sm.get("narrative", "")[:400],
+            f"method={sm.get('method', 'deterministic')}",
+            a["Insight Agent"]["status"], a["Insight Agent"]["message"],
         )
 
 
