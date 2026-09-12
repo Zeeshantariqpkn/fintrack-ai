@@ -1,5 +1,5 @@
 """
-Transactions page — searchable, filterable, sortable table.
+Transactions page.
 """
 from __future__ import annotations
 
@@ -48,28 +48,26 @@ def main() -> None:
     with f1:
         search = st.text_input("Search description", placeholder="Type to search…")
     with f2:
-        cats = ["All"] + sorted(df["category"].unique().tolist())
+        cats = ["All"] + sorted(df["category"].unique().tolist()) if "category" in df.columns else ["All"]
         cat_filter = st.selectbox("Category", cats)
     with f3:
         type_filter = st.selectbox("Type", ["All", "Income", "Expense"])
     with f4:
         date_range = st.date_input(
             "Date range",
-            value=(df["date"].min().date(), df["date"].max().date()),
-        )
+            value=(df["date"].min().date(), df["date"].max().date()))
 
     filtered = df.copy()
     if search:
         filtered = filtered[filtered["description"].str.contains(search, case=False, na=False)]
-    if cat_filter != "All":
+    if cat_filter != "All" and "category" in filtered.columns:
         filtered = filtered[filtered["category"] == cat_filter]
     if type_filter != "All":
         filtered = filtered[filtered["type"] == type_filter.lower()]
     if isinstance(date_range, tuple) and len(date_range) == 2:
         start, end = date_range
         filtered = filtered[
-            (filtered["date"].dt.date >= start) & (filtered["date"].dt.date <= end)
-        ]
+            (filtered["date"].dt.date >= start) & (filtered["date"].dt.date <= end)]
 
     c1, c2, c3, c4 = st.columns(4)
     with c1:
@@ -86,24 +84,30 @@ def main() -> None:
 
     st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 
-    display = filtered[["date", "description", "category", "type", "amount", "category_confidence"]].copy()
+    cols = ["date", "description", "type", "amount"]
+    if "category" in filtered.columns:
+        cols.insert(2, "category")
+    if "category_confidence" in filtered.columns:
+        cols.append("category_confidence")
+
+    display = filtered[cols].copy()
     display["date"] = display["date"].dt.strftime("%Y-%m-%d")
     display["amount"] = display["amount"].map(lambda x: f"${x:,.2f}")
-    display["category_confidence"] = display["category_confidence"].map(lambda x: f"{x:.0%}")
-    display.columns = ["Date", "Description", "Category", "Type", "Amount", "Confidence"]
+    if "category_confidence" in display.columns:
+        display["category_confidence"] = display["category_confidence"].map(lambda x: f"{x:.0%}")
+        display.columns = ["Date", "Description", "Category", "Type", "Amount", "Confidence"]
+    else:
+        display.columns = ["Date", "Description", "Category", "Type", "Amount"]
 
-    st.dataframe(
-        display.sort_values("Date", ascending=False),
-        use_container_width=True,
-        hide_index=True,
-        height=460,
-    )
+    st.dataframe(display.sort_values("Date", ascending=False),
+                 use_container_width=True, hide_index=True, height=460)
 
-    st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
-    st.markdown("**Category distribution**")
-    dist = df["category"].value_counts().reset_index()
-    dist.columns = ["Category", "Count"]
-    st.dataframe(dist, use_container_width=True, hide_index=True)
+    if "category" in df.columns:
+        st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+        st.markdown("**Category distribution**")
+        dist = df["category"].value_counts().reset_index()
+        dist.columns = ["Category", "Count"]
+        st.dataframe(dist, use_container_width=True, hide_index=True)
 
 
 main()
