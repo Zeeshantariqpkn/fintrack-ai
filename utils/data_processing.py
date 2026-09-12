@@ -1,8 +1,5 @@
 """
 Data processing utilities for FinTrack AI.
-
-Responsible for loading CSVs, normalizing columns, parsing dates/amounts,
-and producing the Data Agent's structured output.
 """
 from __future__ import annotations
 
