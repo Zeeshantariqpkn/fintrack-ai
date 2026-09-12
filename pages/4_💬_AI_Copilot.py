@@ -1,5 +1,5 @@
 """
-AI Financial Copilot — with optional vector-DB retrieval (mini-RAG).
+AI Financial Copilot — RAG-enabled Q&A.
 """
 from __future__ import annotations
 
@@ -17,10 +17,7 @@ import streamlit as st
 from agents.strategic_agents import call_hf, hf_available
 from utils.financial_state import FinancialState, get_financial_state
 from utils.ui import render_sidebar
-from utils.vector_store import (
-    build_documents_from_state,
-    get_vector_store,
-)
+from utils.vector_store import build_documents_from_state, get_vector_store
 
 st.set_page_config(page_title="AI Copilot — FinTrack AI", page_icon="💬", layout="wide")
 
@@ -30,7 +27,7 @@ CSS = """
 .ft-sub { color:#475569; font-size:.95rem; margin-top:4px; }
 .ft-msg-user { background:linear-gradient(135deg,#2563eb,#3b82f6); color:#fff;
     padding:12px 16px; border-radius:14px 14px 4px 14px; margin:8px 0 8px auto;
-    max-width:75%; font-size:.9rem; box-shadow:0 4px 14px rgba(37,99,235,.22); }
+    max-width:75%; font-size:.9rem; }
 .ft-msg-ai { background:#f8fafc; border:1px solid #e2e8f0; color:#334155;
     padding:14px 18px; border-radius:14px 14px 14px 4px; margin:8px auto 8px 0;
     max-width:85%; font-size:.9rem; line-height:1.6; }
@@ -73,104 +70,73 @@ def _det_qa(question: str, state: FinancialState) -> Dict[str, Any]:
         interp = cite("expense_ratio")
         answer = f"Your expense ratio is {s['expense_ratio']:.1f}%. {interp} "
         if s["expense_ratio"] > 60:
-            answer += (
-                f"This is elevated. The largest category is {s.get('largest_category','—')} "
-                f"at ${s.get('largest_category_value', 0):,.0f}, which is the most likely lever."
-            )
+            answer += (f"This is elevated. Largest category: {s.get('largest_category','—')} "
+                      f"at ${s.get('largest_category_value', 0):,.0f}.")
         else:
-            answer += "This is within a healthy range for most SMBs."
+            answer += "This is within a healthy range."
         citations.append(f"expense_ratio={s['expense_ratio']:.1f}%")
         return {"answer": answer, "citations": citations}
 
-    if "risk" in q and ("biggest" in q or "largest" in q or "main" in q or "top" in q or "what is" in q):
+    if "risk" in q and any(k in q for k in ("biggest", "largest", "main", "top", "what is")):
         if not r.get("risks"):
-            return {"answer": "The Risk Agent found no material risks in your financial data.",
-                    "citations": ["risk_score=0"]}
+            return {"answer": "No material risks detected.", "citations": ["risk_score=0"]}
         top = r["risks"][0]
-        answer = (
-            f"Your biggest financial risk is **{top['title']}** "
-            f"(severity: {top['severity']}). {top['description']} "
-            f"Overall risk score: {r['risk_score']}/100 ({r['risk_level']})."
-        )
+        answer = (f"Biggest risk: **{top['title']}** (severity: {top['severity']}). "
+                 f"{top['description']} Overall risk: {r['risk_score']}/100 ({r['risk_level']}).")
         citations.append(top.get("evidence", ""))
         return {"answer": answer, "citations": citations}
 
     if "reduce" in q and ("cost" in q or "expense" in q or "spend" in q):
         if o.get("opportunities"):
             top = o["opportunities"][0]
-            answer = f"The highest-leverage cost reduction is **{top['title']}**: {top['description']}"
+            answer = f"Top cost reduction: **{top['title']}** — {top['description']}"
             citations.extend(o.get("evidence", [])[:2])
         else:
-            answer = "No major cost-reduction opportunities were detected."
+            answer = "No major cost-reduction opportunities detected."
         return {"answer": answer, "citations": citations}
 
     if "vendor" in q or "supplier" in q:
         if s.get("top_vendor"):
-            answer = (
-                f"Your highest-spend vendor is **{s['top_vendor']}** at "
-                f"${s['top_vendor_value']:,.0f}, representing "
-                f"{s['top_vendor_share']:.1f}% of total expenses."
-            )
-            if s["top_vendor_share"] > 25:
-                answer += " This is a concentration risk worth addressing."
+            answer = (f"Highest-spend vendor: **{s['top_vendor']}** at "
+                     f"${s['top_vendor_value']:,.0f} ({s['top_vendor_share']:.1f}% of expenses).")
             citations.append(f"top_vendor={s['top_vendor']}")
         else:
-            answer = "No vendor-level data available."
+            answer = "No vendor data."
         return {"answer": answer, "citations": citations}
 
     if "healthy" in q or "health" in q or ("how" in q and "doing" in q):
         score = state.financial_health_score()
         label = state.health_label()
-        answer = (
-            f"Your financial health score is **{score}/100 — {label}**. "
-            f"Revenue is ${s['total_revenue']:,.0f}, expenses are ${s['total_expenses']:,.0f}, "
-            f"and net cash flow is ${s['net_cash_flow']:,.0f}. "
-        )
-        if score >= 80:
-            answer += "The business is in a strong position."
-        elif score >= 60:
-            answer += "The business is stable but has room to improve."
-        else:
-            answer += "There are meaningful areas to address — see the Risks page."
+        answer = (f"Health score: **{score}/100 — {label}**. "
+                 f"Revenue ${s['total_revenue']:,.0f}, expenses ${s['total_expenses']:,.0f}, "
+                 f"net ${s['net_cash_flow']:,.0f}.")
         citations.append(f"health_score={score}")
         return {"answer": answer, "citations": citations}
 
     if "next month" in q or "what should i do" in q or "next step" in q:
         actions = d.get("recommended_actions", [])
-        answer = f"Recommended next step: **{d.get('title', '—')}**. "
+        answer = f"Next step: **{d.get('title', '—')}**. "
         if actions:
             answer += "Specifically: " + "; ".join(actions) + "."
         answer += f" Expected impact: {d.get('expected_impact', '—')}."
         return {"answer": answer, "citations": [d.get("title", "")]}
 
     if "why" in q and ("decision" in q or "recommend" in q):
-        answer = (
-            f"The Decision Agent recommended **{d.get('title', '—')}** because: "
-            f"{d.get('reasoning', '')} "
-            f"The Critic Agent "
-            f"{'approved' if c.get('approved') else 'requested revision on'} this decision. "
-            f"{c.get('reasoning', '')}"
-        )
+        answer = (f"Decision Agent recommended **{d.get('title', '—')}** because: "
+                 f"{d.get('reasoning', '')} Critic "
+                 f"{'approved' if c.get('approved') else 'requested revision on'} it.")
         return {"answer": answer, "citations": d.get("evidence", [])}
 
     if "cash flow" in q or "cashflow" in q:
-        answer = (
-            f"Your net cash flow is **${s['net_cash_flow']:,.0f}** "
-            f"(revenue ${s['total_revenue']:,.0f} − expenses ${s['total_expenses']:,.0f}). "
-            f"You had {s['positive_months']} positive and {s['negative_months']} negative "
-            f"cash-flow month(s)."
-        )
+        answer = (f"Net cash flow: **${s['net_cash_flow']:,.0f}** "
+                 f"(${s['total_revenue']:,.0f} − ${s['total_expenses']:,.0f}). "
+                 f"{s['positive_months']} positive / {s['negative_months']} negative months.")
         citations.append(f"net_cash_flow={s['net_cash_flow']:.0f}")
         return {"answer": answer, "citations": citations}
 
-    answer = (
-        "I can answer questions about your revenue, expenses, cash flow, expense ratio, "
-        "risks, opportunities, vendors, and the AI decision. "
-        f"Quick snapshot: revenue ${s['total_revenue']:,.0f}, "
-        f"expenses ${s['total_expenses']:,.0f}, "
-        f"net ${s['net_cash_flow']:,.0f}, "
-        f"risk {r.get('risk_score', 0)}/100."
-    )
+    answer = (f"Snapshot: revenue ${s['total_revenue']:,.0f}, "
+             f"expenses ${s['total_expenses']:,.0f}, net ${s['net_cash_flow']:,.0f}, "
+             f"risk {r.get('risk_score', 0)}/100.")
     return {"answer": answer, "citations": []}
 
 
@@ -192,8 +158,7 @@ def answer_question(question: str, state: FinancialState) -> Dict[str, Any]:
     if not hf_available():
         if retrieved:
             det["citations"] = det.get("citations", []) + [
-                f"{d['kind']}: {d['text'][:120]}" for d in retrieved[:3]
-            ]
+                f"{d['kind']}: {d['text'][:120]}" for d in retrieved[:3]]
         return det
 
     s = state.stats
@@ -222,19 +187,15 @@ def answer_question(question: str, state: FinancialState) -> Dict[str, Any]:
 
     retrieved_block = ""
     if retrieved:
-        retrieved_block = (
-            "Retrieved relevant context (from vector database):\n"
-            + "\n".join(f"- {d['text']}" for d in retrieved)
-            + "\n\n"
-        )
+        retrieved_block = ("Retrieved context (from vector DB):\n"
+                         + "\n".join(f"- {d['text']}" for d in retrieved) + "\n\n")
 
     prompt = (
-        "You are the AI Financial Copilot in FinTrack AI. Answer the user's question "
-        "using ONLY the financial data below. Do not invent numbers. Be concise (max 120 words). "
-        "Cite the specific numbers you use.\n\n"
-        f"Financial data:\n{json.dumps(context)[:2000]}\n\n"
+        "You are the AI Financial Copilot. Answer the user's question using ONLY "
+        "the financial data below. Do not invent numbers. Be concise (max 120 words).\n\n"
+        f"Data:\n{json.dumps(context)[:2000]}\n\n"
         f"{retrieved_block}"
-        f"User question: {question}\n\nAnswer:"
+        f"Question: {question}\n\nAnswer:"
     )
     text = call_hf(prompt, max_new_tokens=300, temperature=0.3)
     if not text:
@@ -247,30 +208,21 @@ def main() -> None:
     state: FinancialState = get_financial_state()
 
     st.markdown('<div class="ft-h1">AI Financial Copilot</div>', unsafe_allow_html=True)
-    st.markdown(
-        '<div class="ft-sub">Ask questions about your finances. Answers use only your analyzed data.</div>',
-        unsafe_allow_html=True,
-    )
+    st.markdown('<div class="ft-sub">Ask questions about your finances.</div>',
+                unsafe_allow_html=True)
 
     config = st.session_state.get("config", {})
     use_vector = config.get("use_vector_db", True)
     store = get_vector_store()
 
-    if use_vector:
+    if use_vector and state.is_complete():
         if store.is_ready():
             st.markdown(
                 f'<div style="margin-top:8px;"><span style="display:inline-block;padding:4px 10px;'
                 f'border-radius:999px;background:rgba(37,99,235,.1);color:#1d4ed8;font-size:.78rem;'
                 f'font-weight:700;">◈ Vector DB active · {store.size()} docs · {store.provider}</span></div>',
-                unsafe_allow_html=True,
-            )
-        else:
-            st.markdown(
-                '<div style="margin-top:8px;"><span style="display:inline-block;padding:4px 10px;'
-                'border-radius:999px;background:rgba(245,158,11,.12);color:#b45309;font-size:.78rem;'
-                'font-weight:700;">◈ Vector DB will build on first question</span></div>',
-                unsafe_allow_html=True,
-            )
+                unsafe_allow_html=True)
+
     st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
 
     if not state.is_complete():
@@ -295,17 +247,11 @@ def main() -> None:
         retrieved_html = ""
         if turn.get("retrieved"):
             top = turn["retrieved"][0]
-            retrieved_html = (
-                f'<div class="retrieval">◈ retrieved: {top["kind"]} '
-                f'(score {top["score"]:.2f})</div>'
-            )
+            retrieved_html = f'<div class="retrieval">◈ retrieved: {top["kind"]} (score {top["score"]:.2f})</div>'
         st.markdown(
-            f'<div class="ft-msg-ai">{turn["a"]}'
-            + retrieved_html
+            f'<div class="ft-msg-ai">{turn["a"]}{retrieved_html}'
             + (f'<div class="src">Evidence<br>{cites}</div>' if cites else "")
-            + "</div>",
-            unsafe_allow_html=True,
-        )
+            + "</div>", unsafe_allow_html=True)
 
     question = st.chat_input("Ask about your finances…")
     if st.session_state.get("copilot_pending"):
