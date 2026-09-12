@@ -1,5 +1,5 @@
 """
-Risks & Opportunities page — decision-oriented panels.
+Risks & Opportunities page.
 """
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from utils.financial_state import FinancialState, get_financial_state
+from utils.ui import render_sidebar
 
 st.set_page_config(page_title="Risks & Opportunities — FinTrack AI", page_icon="⚠️", layout="wide")
 
@@ -39,6 +40,8 @@ CSS = """
 """
 st.markdown(CSS, unsafe_allow_html=True)
 
+render_sidebar()
+
 
 def _sev(sev: str) -> str:
     sev = (sev or "LOW").upper()
@@ -52,8 +55,7 @@ def _risk_gauge(score: int, level: str) -> go.Figure:
         value=score,
         number={"suffix": " / 100", "font": {"size": 28, "color": "#0f172a"}},
         gauge={
-            "axis": {"range": [0, 100], "tickwidth": 1, "tickcolor": "#cbd5e1",
-                     "tickfont": {"size": 10, "color": "#94a3b8"}},
+            "axis": {"range": [0, 100], "tickwidth": 1, "tickcolor": "#cbd5e1"},
             "bar": {"color": color, "thickness": 0.28},
             "bgcolor": "#f1f5f9", "borderwidth": 0,
             "steps": [
