@@ -1,8 +1,5 @@
 """
-Insight Agent.
-
-Produces the executive financial briefing. Uses Hugging Face when available;
-otherwise falls back to a deterministic template populated with real numbers.
+Insight Agent — executive financial briefing.
 """
 from __future__ import annotations
 
@@ -66,7 +63,6 @@ def run_insight_agent(
     health_label: str,
     use_ai: bool = True,
 ) -> Dict[str, Any]:
-    """Generate the executive briefing."""
     fallback = _deterministic_summary(
         stats, risk, opportunity, decision, critic, health_score, health_label
     )
