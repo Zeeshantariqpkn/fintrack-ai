@@ -1,8 +1,5 @@
 """
 FinTrack AI — main entry point.
-
-Streamlit app that orchestrates the agent pipeline and renders the premium
-Overview dashboard. Additional pages live in pages/.
 """
 from __future__ import annotations
 
@@ -12,11 +9,9 @@ import time
 from pathlib import Path
 from typing import Any, Dict
 
-# --- Ensure project root is importable (Streamlit Cloud runs pages from /pages) ---
 ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-# --------------------------------------------------------------------------------
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -37,10 +32,8 @@ from utils.financial_state import (
     get_financial_state,
     reset_financial_state,
 )
+from utils.ui import inject_auto_nav_hider, render_sidebar
 
-# ---------------------------------------------------------------------
-# Page config
-# ---------------------------------------------------------------------
 st.set_page_config(
     page_title="FinTrack AI — Agentic Financial Analytics",
     page_icon="💠",
@@ -48,9 +41,8 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ---------------------------------------------------------------------
-# Design system — premium white/blue SaaS
-# ---------------------------------------------------------------------
+inject_auto_nav_hider()
+
 CSS = """
 <style>
 :root {
@@ -168,10 +160,6 @@ section[data-testid="stSidebar"] > div { padding-top: 1.5rem; }
     background: var(--ft-blue-soft); color: var(--ft-blue);
     border: 1px solid rgba(37,99,235,0.2);
 }
-.ft-badge-amber {
-    background: rgba(245,158,11,0.1); color: #b45309;
-    border: 1px solid rgba(245,158,11,0.25);
-}
 .ft-badge-red {
     background: rgba(239,68,68,0.1); color: #b91c1c;
     border: 1px solid rgba(239,68,68,0.25);
@@ -278,9 +266,6 @@ section[data-testid="stSidebar"] > div { padding-top: 1.5rem; }
 st.markdown(CSS, unsafe_allow_html=True)
 
 
-# ---------------------------------------------------------------------
-# Session state helpers
-# ---------------------------------------------------------------------
 def _get_state() -> FinancialState:
     return get_financial_state()
 
@@ -289,19 +274,16 @@ def _reset_state() -> None:
     reset_financial_state()
 
 
-def _set_config(key: str, value: Any) -> None:
-    st.session_state.setdefault("config", {"use_ai_categorization": True, "use_ai_insights": True})
-    st.session_state.config[key] = value
-
-
 def _get_config() -> Dict[str, bool]:
-    st.session_state.setdefault("config", {"use_ai_categorization": True, "use_ai_insights": True})
+    st.session_state.setdefault("config", {
+        "use_ai_categorization": True,
+        "use_ai_insights": True,
+        "use_vector_db": True,
+        "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+    })
     return st.session_state.config
 
 
-# ---------------------------------------------------------------------
-# Formatting helpers
-# ---------------------------------------------------------------------
 def fmt_money(v: float) -> str:
     sign = "-" if v < 0 else ""
     return f"{sign}${abs(v):,.0f}"
@@ -329,145 +311,6 @@ def kpi_card(label: str, value: str, sub: str = "", accent: str = "") -> str:
 def severity_badge(sev: str) -> str:
     sev = (sev or "LOW").upper()
     return f'<span class="ft-sev ft-sev-{sev}">{sev}</span>'
-
-
-# ---------------------------------------------------------------------
-# Pipeline runner
-# ---------------------------------------------------------------------
-def _run_pipeline(df_raw: pd.DataFrame, progress_placeholder) -> FinancialState:
-    state = _get_state()
-    config = _get_config()
-    state.errors = []
-
-    # -------- Data Agent --------
-    state.set_status("Data Agent", "running")
-    _render_progress(progress_placeholder, state)
-    try:
-        result = process_transactions(df_raw)
-    except Exception as exc:
-        state.set_status("Data Agent", "error", str(exc))
-        state.errors.append(str(exc))
-        _render_progress(progress_placeholder, state)
-        return state
-
-    state.df = result["df"]
-    state.quality = result["quality"]
-    state.errors.extend(result["errors"])
-    state.set_status(
-        "Data Agent", "complete",
-        f"{state.quality['clean_rows']} transactions cleaned",
-        "; ".join(result["errors"]) or "All rows valid.",
-    )
-    time.sleep(0.15)
-    _render_progress(progress_placeholder, state)
-
-    if state.df.empty:
-        state.set_status("Data Agent", "error", "No valid rows after cleaning.")
-        _render_progress(progress_placeholder, state)
-        return state
-
-    # -------- Categorization Agent --------
-    state.set_status("Categorization Agent", "running")
-    _render_progress(progress_placeholder, state)
-    cat = run_categorization_agent(
-        state.df, use_ai=config["use_ai_categorization"]
-    )
-    state.df = cat["df"]
-    state.set_status(
-        "Categorization Agent", "complete",
-        f"{cat['classified']} transactions classified",
-        f"Method: {cat['method']} • categories: {len(cat['counts'])}",
-    )
-    time.sleep(0.15)
-    _render_progress(progress_placeholder, state)
-
-    # -------- Analytics Agent --------
-    state.set_status("Analytics Agent", "running")
-    _render_progress(progress_placeholder, state)
-    state.stats = run_analytics_agent(state.df)
-    state.set_status(
-        "Analytics Agent", "complete",
-        f"{len(state.stats['evidence'])} financial patterns analyzed",
-        f"Revenue {fmt_money(state.stats['total_revenue'])} • "
-        f"Expenses {fmt_money(state.stats['total_expenses'])}",
-    )
-    time.sleep(0.15)
-    _render_progress(progress_placeholder, state)
-
-    # -------- Risk Agent --------
-    state.set_status("Risk Agent", "running")
-    _render_progress(progress_placeholder, state)
-    state.risk = run_risk_agent(state.stats)
-    state.set_status(
-        "Risk Agent", "complete",
-        f"{len(state.risk['risks'])} risk(s) detected",
-        f"Risk level: {state.risk['risk_level']} ({state.risk['risk_score']}/100)",
-    )
-    time.sleep(0.15)
-    _render_progress(progress_placeholder, state)
-
-    # -------- Opportunity Agent --------
-    state.set_status("Opportunity Agent", "running")
-    _render_progress(progress_placeholder, state)
-    state.opportunity = run_opportunity_agent(state.stats)
-    state.set_status(
-        "Opportunity Agent", "complete",
-        f"{len(state.opportunity['opportunities'])} opportunit(ies) identified",
-        f"Opportunity score: {state.opportunity['opportunity_score']}/100",
-    )
-    time.sleep(0.15)
-    _render_progress(progress_placeholder, state)
-
-    # -------- Decision + Critic loop --------
-    state.set_status("Decision Agent", "running")
-    _render_progress(progress_placeholder, state)
-    decision, critic, revisions, loop_summary = run_decision_with_critique(
-        state.stats, state.risk, state.opportunity
-    )
-    state.decision = decision
-    state.critic = critic
-    state.revision_count = revisions
-
-    state.set_status(
-        "Decision Agent", "complete",
-        decision.get("title", "Decision made"),
-        f"Priority: {decision.get('priority', '—')}",
-    )
-    if revisions > 0:
-        state.set_status(
-            "Critic Agent", "complete",
-            f"Decision revised {revisions}× then approved",
-            loop_summary,
-        )
-    else:
-        state.set_status(
-            "Critic Agent", "complete",
-            "Decision verified",
-            loop_summary,
-        )
-    time.sleep(0.15)
-    _render_progress(progress_placeholder, state)
-
-    # -------- Insight Agent --------
-    state.set_status("Insight Agent", "running")
-    _render_progress(progress_placeholder, state)
-    health_score = state.financial_health_score()
-    health_label = state.health_label()
-    state.summary = run_insight_agent(
-        state.stats, state.risk, state.opportunity,
-        state.decision, state.critic,
-        health_score, health_label,
-        use_ai=config["use_ai_insights"],
-    )
-    state.set_status(
-        "Insight Agent", "complete",
-        "Financial briefing generated",
-        f"Health: {health_score}/100 — {health_label}",
-    )
-    time.sleep(0.15)
-    _render_progress(progress_placeholder, state)
-
-    return state
 
 
 def _render_progress(placeholder, state: FinancialState) -> None:
@@ -501,9 +344,133 @@ def _render_progress(placeholder, state: FinancialState) -> None:
     )
 
 
-# ---------------------------------------------------------------------
-# Charts
-# ---------------------------------------------------------------------
+def _run_pipeline(df_raw: pd.DataFrame, progress_placeholder) -> FinancialState:
+    state = _get_state()
+    config = _get_config()
+    state.errors = []
+
+    state.set_status("Data Agent", "running")
+    _render_progress(progress_placeholder, state)
+    try:
+        result = process_transactions(df_raw)
+    except Exception as exc:
+        state.set_status("Data Agent", "error", str(exc))
+        state.errors.append(str(exc))
+        _render_progress(progress_placeholder, state)
+        return state
+
+    state.df = result["df"]
+    state.quality = result["quality"]
+    state.errors.extend(result["errors"])
+    state.set_status(
+        "Data Agent", "complete",
+        f"{state.quality['clean_rows']} transactions cleaned",
+        "; ".join(result["errors"]) or "All rows valid.",
+    )
+    time.sleep(0.1)
+    _render_progress(progress_placeholder, state)
+
+    if state.df.empty:
+        state.set_status("Data Agent", "error", "No valid rows after cleaning.")
+        _render_progress(progress_placeholder, state)
+        return state
+
+    state.set_status("Categorization Agent", "running")
+    _render_progress(progress_placeholder, state)
+    cat = run_categorization_agent(state.df, use_ai=config["use_ai_categorization"])
+    state.df = cat["df"]
+    state.set_status(
+        "Categorization Agent", "complete",
+        f"{cat['classified']} transactions classified",
+        f"Method: {cat['method']} • categories: {len(cat['counts'])}",
+    )
+    time.sleep(0.1)
+    _render_progress(progress_placeholder, state)
+
+    state.set_status("Analytics Agent", "running")
+    _render_progress(progress_placeholder, state)
+    state.stats = run_analytics_agent(state.df)
+    state.set_status(
+        "Analytics Agent", "complete",
+        f"{len(state.stats['evidence'])} financial patterns analyzed",
+        f"Revenue {fmt_money(state.stats['total_revenue'])} • "
+        f"Expenses {fmt_money(state.stats['total_expenses'])}",
+    )
+    time.sleep(0.1)
+    _render_progress(progress_placeholder, state)
+
+    state.set_status("Risk Agent", "running")
+    _render_progress(progress_placeholder, state)
+    state.risk = run_risk_agent(state.stats)
+    state.set_status(
+        "Risk Agent", "complete",
+        f"{len(state.risk['risks'])} risk(s) detected",
+        f"Risk level: {state.risk['risk_level']} ({state.risk['risk_score']}/100)",
+    )
+    time.sleep(0.1)
+    _render_progress(progress_placeholder, state)
+
+    state.set_status("Opportunity Agent", "running")
+    _render_progress(progress_placeholder, state)
+    state.opportunity = run_opportunity_agent(state.stats)
+    state.set_status(
+        "Opportunity Agent", "complete",
+        f"{len(state.opportunity['opportunities'])} opportunit(ies) identified",
+        f"Opportunity score: {state.opportunity['opportunity_score']}/100",
+    )
+    time.sleep(0.1)
+    _render_progress(progress_placeholder, state)
+
+    state.set_status("Decision Agent", "running")
+    _render_progress(progress_placeholder, state)
+    decision, critic, revisions, loop_summary = run_decision_with_critique(
+        state.stats, state.risk, state.opportunity
+    )
+    state.decision = decision
+    state.critic = critic
+    state.revision_count = revisions
+
+    state.set_status(
+        "Decision Agent", "complete",
+        decision.get("title", "Decision made"),
+        f"Priority: {decision.get('priority', '—')}",
+    )
+    if revisions > 0:
+        state.set_status(
+            "Critic Agent", "complete",
+            f"Decision revised {revisions}× then approved",
+            loop_summary,
+        )
+    else:
+        state.set_status(
+            "Critic Agent", "complete",
+            "Decision verified",
+            loop_summary,
+        )
+    time.sleep(0.1)
+    _render_progress(progress_placeholder, state)
+
+    state.set_status("Insight Agent", "running")
+    _render_progress(progress_placeholder, state)
+    health_score = state.financial_health_score()
+    health_label = state.health_label()
+    state.summary = run_insight_agent(
+        state.stats, state.risk, state.opportunity,
+        state.decision, state.critic,
+        health_score, health_label,
+        use_ai=config["use_ai_insights"],
+    )
+    state.set_status(
+        "Insight Agent", "complete",
+        "Financial briefing generated",
+        f"Health: {health_score}/100 — {health_label}",
+    )
+    time.sleep(0.1)
+    _render_progress(progress_placeholder, state)
+
+    return state
+
+
 def cash_flow_chart(monthly: list) -> go.Figure:
     if not monthly:
         return go.Figure()
@@ -513,25 +480,14 @@ def cash_flow_chart(monthly: list) -> go.Figure:
     net = [m["net"] for m in monthly]
 
     fig = go.Figure()
-    fig.add_bar(
-        x=months, y=rev, name="Revenue",
-        marker_color="#93c5fd", marker_line_width=0,
-        hovertemplate="%{x}<br>Revenue: $%{y:,.0f}<extra></extra>",
-    )
-    fig.add_bar(
-        x=months, y=exp, name="Expenses",
-        marker_color="#fca5a5", marker_line_width=0,
-        hovertemplate="%{x}<br>Expenses: $%{y:,.0f}<extra></extra>",
-    )
-    fig.add_trace(
-        go.Scatter(
-            x=months, y=net, name="Net Cash Flow",
-            mode="lines+markers",
-            line=dict(color="#2563eb", width=3),
-            marker=dict(size=9, color="#2563eb", line=dict(color="white", width=2)),
-            hovertemplate="%{x}<br>Net: $%{y:,.0f}<extra></extra>",
-        )
-    )
+    fig.add_bar(x=months, y=rev, name="Revenue", marker_color="#93c5fd", marker_line_width=0)
+    fig.add_bar(x=months, y=exp, name="Expenses", marker_color="#fca5a5", marker_line_width=0)
+    fig.add_trace(go.Scatter(
+        x=months, y=net, name="Net Cash Flow",
+        mode="lines+markers",
+        line=dict(color="#2563eb", width=3),
+        marker=dict(size=9, color="#2563eb", line=dict(color="white", width=2)),
+    ))
     fig.update_layout(
         barmode="group",
         plot_bgcolor="white", paper_bgcolor="white",
@@ -579,48 +535,6 @@ def health_gauge(score: int, label: str) -> go.Figure:
     return fig
 
 
-# ---------------------------------------------------------------------
-# Sidebar
-# ---------------------------------------------------------------------
-def render_sidebar(state: FinancialState) -> None:
-    with st.sidebar:
-        st.markdown(
-            """
-            <div class="ft-brand">
-                <div class="dot">FT</div>
-                <div>
-                    <div>FinTrack AI</div>
-                    <div class="ft-tagline">AI Financial Intelligence</div>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        st.markdown('<div class="ft-divider"></div>', unsafe_allow_html=True)
-
-        st.markdown("**Navigation**")
-        st.page_link("app.py", label="Overview", icon="📊")
-        st.page_link("pages/1_🤖_Agent_Center.py", label="Agent Center", icon="🤖")
-        st.page_link("pages/2_📊_Analytics.py", label="Analytics", icon="📈")
-        st.page_link("pages/3_⚠️_Risks_&_Opportunities.py", label="Risks & Opportunities", icon="⚠️")
-        st.page_link("pages/4_💬_AI_Copilot.py", label="AI Copilot", icon="💬")
-        st.page_link("pages/5_📁_Transactions.py", label="Transactions", icon="📁")
-        st.page_link("pages/6_⚙️_Settings.py", label="Settings", icon="⚙️")
-
-        st.markdown('<div class="ft-divider"></div>', unsafe_allow_html=True)
-        st.markdown(
-            '<div class="ft-status"><span class="pulse"></span> AI System Online</div>',
-            unsafe_allow_html=True,
-        )
-        if hf_available():
-            st.caption("Hugging Face: connected")
-        else:
-            st.caption("Hugging Face: fallback mode")
-
-
-# ---------------------------------------------------------------------
-# Views
-# ---------------------------------------------------------------------
 def render_landing() -> None:
     st.markdown(
         """
@@ -649,17 +563,14 @@ def render_landing() -> None:
             type=["csv"],
             label_visibility="collapsed",
         )
-
         st.markdown(
             "<div style='color:#64748b;font-size:0.82rem;margin-top:6px;'>"
             "Positive amounts = income · Negative amounts = expenses"
             "</div>",
             unsafe_allow_html=True,
         )
-
         st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
         use_sample = st.button("Try sample data", use_container_width=True)
-
         st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
         start = st.button("Run AI Analysis", type="primary", use_container_width=True)
 
@@ -757,47 +668,31 @@ def render_overview(state: FinancialState) -> None:
 
     c1, c2, c3, c4 = st.columns(4)
     with c1:
-        st.markdown(kpi_card(
-            "Revenue", fmt_money(stats["total_revenue"]),
-            "Income across all periods", accent="blue",
-        ), unsafe_allow_html=True)
+        st.markdown(kpi_card("Revenue", fmt_money(stats["total_revenue"]),
+                             "Income across all periods", accent="blue"), unsafe_allow_html=True)
     with c2:
-        st.markdown(kpi_card(
-            "Expenses", fmt_money(stats["total_expenses"]),
-            f"Across {len(stats.get('category_totals', {}))} categories", accent="red",
-        ), unsafe_allow_html=True)
+        st.markdown(kpi_card("Expenses", fmt_money(stats["total_expenses"]),
+                             f"Across {len(stats.get('category_totals', {}))} categories",
+                             accent="red"), unsafe_allow_html=True)
     with c3:
         net = stats["net_cash_flow"]
-        st.markdown(kpi_card(
-            "Net Cash Flow", fmt_money(net),
-            "Revenue − Expenses",
-            accent="green" if net >= 0 else "red",
-        ), unsafe_allow_html=True)
+        st.markdown(kpi_card("Net Cash Flow", fmt_money(net), "Revenue − Expenses",
+                             accent="green" if net >= 0 else "red"), unsafe_allow_html=True)
     with c4:
-        st.markdown(kpi_card(
-            "Expense Ratio", fmt_pct(stats["expense_ratio"]),
-            "Expenses as % of revenue",
-            accent="green" if stats["expense_ratio"] < 60 else "red",
-        ), unsafe_allow_html=True)
+        st.markdown(kpi_card("Expense Ratio", fmt_pct(stats["expense_ratio"]),
+                             "Expenses as % of revenue",
+                             accent="green" if stats["expense_ratio"] < 60 else "red"),
+                    unsafe_allow_html=True)
 
     st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
 
     left, right = st.columns([1, 1.6])
 
     with left:
-        st.markdown(
-            f"""
-            <div class="ft-card">
-                <div class="ft-kpi-label">Financial Health</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        st.plotly_chart(
-            health_gauge(health_score, health_label),
-            use_container_width=True,
-            config={"displayModeBar": False},
-        )
+        st.markdown('<div class="ft-card"><div class="ft-kpi-label">Financial Health</div></div>',
+                    unsafe_allow_html=True)
+        st.plotly_chart(health_gauge(health_score, health_label),
+                        use_container_width=True, config={"displayModeBar": False})
         st.markdown(
             f"""
             <div style="margin-top:-12px;text-align:center;">
@@ -850,29 +745,13 @@ def render_overview(state: FinancialState) -> None:
 
     st.markdown('<div class="ft-kpi-label">Cash Flow Trend</div>', unsafe_allow_html=True)
     st.markdown('<div class="ft-card">', unsafe_allow_html=True)
-    st.plotly_chart(
-        cash_flow_chart(stats["monthly"]),
-        use_container_width=True,
-        config={"displayModeBar": False},
-    )
+    st.plotly_chart(cash_flow_chart(stats["monthly"]),
+                    use_container_width=True, config={"displayModeBar": False})
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
-
     st.markdown('<div class="ft-kpi-label">Agent Intelligence</div>', unsafe_allow_html=True)
-    _render_agent_timeline(state)
 
-    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
-
-    st.markdown('<div class="ft-kpi-label">Risks & Opportunities</div>', unsafe_allow_html=True)
-    rc, oc = st.columns(2)
-    with rc:
-        _render_risk_preview(state)
-    with oc:
-        _render_opportunity_preview(state)
-
-
-def _render_agent_timeline(state: FinancialState) -> None:
     rows = []
     for name, s in state.agent_status.items():
         status = s["status"]
@@ -893,51 +772,47 @@ def _render_agent_timeline(state: FinancialState) -> None:
         unsafe_allow_html=True,
     )
 
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+    st.markdown('<div class="ft-kpi-label">Risks & Opportunities</div>', unsafe_allow_html=True)
+    rc, oc = st.columns(2)
 
-def _render_risk_preview(state: FinancialState) -> None:
-    risks = state.risk.get("risks", [])
-    if not risks:
-        st.markdown(
-            '<div class="ft-item"><div class="ft-item-title">No material risks detected</div>'
-            '<div class="ft-item-desc">Cash flow, expense ratio, and concentration are within healthy bounds.</div></div>',
-            unsafe_allow_html=True,
-        )
-        return
-    for r in risks[:3]:
-        st.markdown(
-            f'<div class="ft-item">'
-            f'<div class="ft-item-title">{r["title"]}{severity_badge(r.get("severity","LOW"))}</div>'
-            f'<div class="ft-item-desc">{r["description"]}</div>'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
+    with rc:
+        risks = state.risk.get("risks", [])
+        if not risks:
+            st.markdown(
+                '<div class="ft-item"><div class="ft-item-title">No material risks detected</div>'
+                '<div class="ft-item-desc">Cash flow, expense ratio, and concentration are within healthy bounds.</div></div>',
+                unsafe_allow_html=True,
+            )
+        for r in risks[:3]:
+            st.markdown(
+                f'<div class="ft-item">'
+                f'<div class="ft-item-title">{r["title"]}{severity_badge(r.get("severity","LOW"))}</div>'
+                f'<div class="ft-item-desc">{r["description"]}</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+    with oc:
+        opps = state.opportunity.get("opportunities", [])
+        if not opps:
+            st.markdown(
+                '<div class="ft-item"><div class="ft-item-title">No major opportunities detected</div>'
+                '<div class="ft-item-desc">Current spending and cash flow look optimized.</div></div>',
+                unsafe_allow_html=True,
+            )
+        for o in opps[:3]:
+            st.markdown(
+                f'<div class="ft-item">'
+                f'<div class="ft-item-title">↑ {o["title"]}{severity_badge(o.get("impact","LOW"))}</div>'
+                f'<div class="ft-item-desc">{o["description"]}</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
 
 
-def _render_opportunity_preview(state: FinancialState) -> None:
-    opps = state.opportunity.get("opportunities", [])
-    if not opps:
-        st.markdown(
-            '<div class="ft-item"><div class="ft-item-title">No major opportunities detected</div>'
-            '<div class="ft-item-desc">Current spending and cash flow look optimized.</div></div>',
-            unsafe_allow_html=True,
-        )
-        return
-    for o in opps[:3]:
-        st.markdown(
-            f'<div class="ft-item">'
-            f'<div class="ft-item-title">↑ {o["title"]}{severity_badge(o.get("impact","LOW"))}</div>'
-            f'<div class="ft-item-desc">{o["description"]}</div>'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
-
-
-# ---------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------
 def main() -> None:
     state = _get_state()
-    render_sidebar(state)
+    render_sidebar()
 
     if not state.is_complete() and not st.session_state.get("analysis_done"):
         render_landing()
