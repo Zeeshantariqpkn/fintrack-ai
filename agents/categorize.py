@@ -1,9 +1,8 @@
 """
 Categorization Agent.
 
-Classifies every transaction into one of the fixed categories. Uses Hugging
-Face when HF_TOKEN is available; otherwise falls back to deterministic keyword
-matching. The category set is enforced — no invalid categories can escape.
+Classifies every transaction into one of the fixed categories. Uses Groq when
+available; falls back to deterministic keyword matching.
 """
 from __future__ import annotations
 
@@ -61,7 +60,6 @@ _KEYWORDS: Dict[str, List[str]] = {
 
 
 def _keyword_category(description: str, amount: float) -> tuple[str, float]:
-    """Deterministic fallback. Returns (category, confidence)."""
     desc = (description or "").lower()
     if amount >= 0 and not any(k in desc for k in _KEYWORDS["Income"]):
         return "Income", 0.55
@@ -86,7 +84,6 @@ def _keyword_category(description: str, amount: float) -> tuple[str, float]:
 
 
 def _llm_categorize_batch(batch: List[Dict[str, Any]]) -> Dict[str, str]:
-    """Ask the LLM to categorize a batch. Returns {transaction_id: category}."""
     if not hf_available():
         return {}
     prompt = (
@@ -115,9 +112,6 @@ def run_categorization_agent(
     use_ai: bool = True,
     batch_size: int = 12,
 ) -> Dict[str, Any]:
-    """
-    Returns a dict with the categorized DataFrame plus metadata.
-    """
     df = df.copy()
     categories: List[str] = []
     confidences: List[float] = []
