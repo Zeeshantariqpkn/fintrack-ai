@@ -1,5 +1,5 @@
 """
-Analytics page — deep dive into the financial data with Plotly charts.
+Analytics page — deep dive with Plotly charts.
 """
 from __future__ import annotations
 
@@ -10,11 +10,11 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
 from utils.financial_state import FinancialState, get_financial_state
+from utils.ui import render_sidebar
 
 st.set_page_config(page_title="Analytics — FinTrack AI", page_icon="📊", layout="wide")
 
@@ -31,6 +31,8 @@ CSS = """
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
+
+render_sidebar()
 
 
 def _base_layout(fig, height=320, y_prefix=False):
@@ -85,25 +87,18 @@ def main() -> None:
         fig.add_trace(go.Scatter(
             x=[m["month"] for m in monthly], y=[m["revenue"] for m in monthly],
             mode="lines+markers", fill="tozeroy",
-            line=dict(color="#2563eb", width=3),
-            marker=dict(size=8, color="#2563eb"),
-            fillcolor="rgba(37,99,235,0.08)",
-            name="Revenue",
-            hovertemplate="%{x}<br>Revenue: $%{y:,.0f}<extra></extra>",
+            line=dict(color="#2563eb", width=3), marker=dict(size=8, color="#2563eb"),
+            fillcolor="rgba(37,99,235,0.08)", name="Revenue",
         ))
         _base_layout(fig, y_prefix=True)
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-
     with col2:
         fig = go.Figure()
         fig.add_trace(go.Scatter(
             x=[m["month"] for m in monthly], y=[m["expenses"] for m in monthly],
             mode="lines+markers", fill="tozeroy",
-            line=dict(color="#ef4444", width=3),
-            marker=dict(size=8, color="#ef4444"),
-            fillcolor="rgba(239,68,68,0.08)",
-            name="Expenses",
-            hovertemplate="%{x}<br>Expenses: $%{y:,.0f}<extra></extra>",
+            line=dict(color="#ef4444", width=3), marker=dict(size=8, color="#ef4444"),
+            fillcolor="rgba(239,68,68,0.08)", name="Expenses",
         ))
         _base_layout(fig, y_prefix=True)
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
@@ -116,11 +111,9 @@ def main() -> None:
             x=[m["month"] for m in monthly], y=[m["net"] for m in monthly],
             marker_color=["#10b981" if m["net"] >= 0 else "#ef4444" for m in monthly],
             name="Net Cash Flow",
-            hovertemplate="%{x}<br>Net: $%{y:,.0f}<extra></extra>",
         )
         _base_layout(fig, y_prefix=True)
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-
     with col2:
         cat = s.get("category_totals", {})
         if cat:
@@ -131,15 +124,10 @@ def main() -> None:
                 hole=0.55,
                 marker=dict(colors=colors[:len(cat)], line=dict(color="white", width=2)),
                 textinfo="label+percent",
-                textfont=dict(size=11),
-                hovertemplate="%{label}<br>$%{value:,.0f}<br>%{percent}<extra></extra>",
             ))
-            fig.update_layout(
-                plot_bgcolor="white", paper_bgcolor="white",
-                font=dict(family="Inter, sans-serif", color="#334155", size=12),
-                margin=dict(l=10, r=10, t=10, b=10), height=320,
-                showlegend=False,
-            )
+            fig.update_layout(plot_bgcolor="white", paper_bgcolor="white",
+                              height=320, showlegend=False,
+                              font=dict(family="Inter, sans-serif"))
             st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
         else:
             st.info("No expense categories available.")
@@ -151,9 +139,8 @@ def main() -> None:
         fig = go.Figure(go.Bar(
             x=[v for _, v in v_items], y=[k for k, _ in v_items],
             orientation="h", marker_color="#3b82f6",
-            hovertemplate="%{y}<br>$%{x:,.0f}<extra></extra>",
         ))
-        _base_layout(fig, height=340, y_prefix=False)
+        _base_layout(fig, height=340)
         fig.update_xaxes(tickprefix="$", tickformat=",.0f")
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
     else:
@@ -177,7 +164,6 @@ def main() -> None:
             st.markdown('</div>', unsafe_allow_html=True)
         else:
             st.info("No recurring expense patterns detected.")
-
     with col2:
         fig = go.Figure()
         fig.add_bar(x=[m["month"] for m in monthly], y=[m["revenue"] for m in monthly],
@@ -187,8 +173,7 @@ def main() -> None:
         fig.add_trace(go.Scatter(
             x=[m["month"] for m in monthly], y=[m["net"] for m in monthly],
             name="Net", mode="lines+markers",
-            line=dict(color="#2563eb", width=3),
-            marker=dict(size=8, color="#2563eb"),
+            line=dict(color="#2563eb", width=3), marker=dict(size=8, color="#2563eb"),
         ))
         fig.update_layout(barmode="group")
         _base_layout(fig, y_prefix=True)
