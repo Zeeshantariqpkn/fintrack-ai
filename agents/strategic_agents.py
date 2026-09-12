@@ -1,20 +1,15 @@
 """
 Agent implementations for FinTrack AI.
 
-Each function is a distinct agent with a single responsibility. They consume
-previous agents' structured output and return structured results.
-
-LLM usage is OPTIONAL — when HF_TOKEN is present and reachable, we query
-Qwen2.5-7B-Instruct for reasoning; otherwise we fall back to deterministic
-logic over the real data. Numbers are always computed locally — never invented
-by the LLM.
+Uses Groq (Llama 3.3 70B) for LLM reasoning. Falls back to deterministic
+logic over real data when GROQ_API_KEY is missing. Numbers are always
+computed locally — never invented by the LLM.
 """
 from __future__ import annotations
 
 import json
 import os
-from collections import Counter, defaultdict
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -24,51 +19,65 @@ try:
 except ImportError:  # pragma: no cover
     requests = None  # type: ignore
 
-HF_MODEL = "Qwen/Qwen2.5-7B-Instruct"
-HF_API_URL = f"https://api-inference.huggingface.co/models/{HF_MODEL}"
+
+GROQ_MODEL = "llama-3.3-70b-versatile"
+GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 
 # =====================================================================
-# Hugging Face helper
+# Groq LLM helper (OpenAI-compatible)
 # =====================================================================
+def _get_groq_key() -> str:
+    """Read GROQ_API_KEY from env vars, then Streamlit secrets."""
+    key = os.environ.get("GROQ_API_KEY", "")
+    if key:
+        return key
+    try:
+        import streamlit as st
+        key = st.secrets.get("GROQ_API_KEY", "")
+        if key:
+            os.environ["GROQ_API_KEY"] = key
+    except Exception:
+        pass
+    return key
+
+
 def hf_available() -> bool:
-    return bool(os.environ.get("HF_TOKEN")) and requests is not None
+    """Kept the same name so existing imports still work. Now checks Groq."""
+    return bool(_get_groq_key()) and requests is not None
 
 
 def call_hf(prompt: str, max_new_tokens: int = 400, temperature: float = 0.3) -> Optional[str]:
     """
-    Call the Hugging Face Inference API. Returns the generated text or None
-    on any failure. Never raises.
+    Call Groq's OpenAI-compatible chat completions API.
+    Returns the generated text or None on any failure. Never raises.
     """
     if not hf_available():
         return None
-    token = os.environ["HF_TOKEN"]
-    headers = {"Authorization": f"Bearer {token}"}
+    headers = {
+        "Authorization": f"Bearer {_get_groq_key()}",
+        "Content-Type": "application/json",
+    }
     payload = {
-        "inputs": prompt,
-        "parameters": {
-            "max_new_tokens": max_new_tokens,
-            "temperature": temperature,
-            "return_full_text": False,
-        },
-        "options": {"wait_for_model": True},
+        "model": GROQ_MODEL,
+        "messages": [
+            {"role": "system", "content": "You are a precise financial analyst. Follow the user's instructions exactly."},
+            {"role": "user", "content": prompt},
+        ],
+        "max_tokens": max_new_tokens,
+        "temperature": temperature,
     }
     try:
-        resp = requests.post(HF_API_URL, headers=headers, json=payload, timeout=30)
+        resp = requests.post(GROQ_API_URL, headers=headers, json=payload, timeout=45)
         if resp.status_code != 200:
             return None
         data = resp.json()
-        if isinstance(data, list) and data and "generated_text" in data[0]:
-            return data[0]["generated_text"].strip()
-        if isinstance(data, dict) and "generated_text" in data:
-            return data["generated_text"].strip()
-        return None
+        return data["choices"][0]["message"]["content"].strip()
     except Exception:
         return None
 
 
 def _safe_json(text: Optional[str]) -> Optional[dict]:
-    """Extract the first JSON object from text."""
     if not text:
         return None
     start = text.find("{")
@@ -85,7 +94,6 @@ def _safe_json(text: Optional[str]) -> Optional[dict]:
 # Analytics Agent
 # =====================================================================
 def run_analytics_agent(df: pd.DataFrame) -> Dict[str, Any]:
-    """Pure computation — builds the structured analytics evidence set."""
     income = df[df["type"] == "income"]
     expense = df[df["type"] == "expense"]
 
@@ -94,7 +102,6 @@ def run_analytics_agent(df: pd.DataFrame) -> Dict[str, Any]:
     net = total_revenue - total_expenses
     expense_ratio = (total_expenses / total_revenue * 100.0) if total_revenue > 0 else 100.0
 
-    # Monthly series
     df_m = df.copy()
     df_m["month"] = df_m["date"].dt.to_period("M").astype(str)
     monthly_rev = df_m[df_m["type"] == "income"].groupby("month")["amount"].sum()
@@ -110,7 +117,6 @@ def run_analytics_agent(df: pd.DataFrame) -> Dict[str, Any]:
     )
     monthly["net"] = monthly["revenue"] - monthly["expenses"]
 
-    # Category breakdown
     cat_totals: Dict[str, float] = {}
     if "category" in expense.columns:
         cat_totals = (
@@ -119,7 +125,6 @@ def run_analytics_agent(df: pd.DataFrame) -> Dict[str, Any]:
         cat_totals = {k: float(v) for k, v in cat_totals.items()}
     largest_cat = next(iter(cat_totals.items()), (None, 0.0))
 
-    # Vendor concentration
     vendor_totals: Dict[str, float] = {}
     if "description" in expense.columns:
         vendor_totals = (
@@ -129,7 +134,6 @@ def run_analytics_agent(df: pd.DataFrame) -> Dict[str, Any]:
     top_vendor = next(iter(vendor_totals.items()), (None, 0.0))
     top_vendor_share = (top_vendor[1] / total_expenses * 100.0) if total_expenses > 0 else 0.0
 
-    # Recurring expenses
     recurring: List[Dict[str, Any]] = []
     if "description" in expense.columns:
         grouped = expense.groupby("description")["abs_amount"]
@@ -240,7 +244,6 @@ def _trend(series: List[float]) -> str:
 # Risk Agent
 # =====================================================================
 def run_risk_agent(stats: Dict[str, Any]) -> Dict[str, Any]:
-    """Independently reason over analytics and enumerate risks with evidence."""
     risks: List[Dict[str, Any]] = []
     evidence: List[str] = []
     score = 0.0
@@ -524,10 +527,6 @@ def run_decision_agent(
     opportunity: Dict[str, Any],
     revision_hint: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """
-    Consume risk + opportunity + analytics, weigh them, and choose the single
-    most impactful business action.
-    """
     risk_pressure = risk.get("risk_score", 0) / 100.0
     opp_score = opportunity.get("opportunity_score", 0) / 100.0
 
@@ -629,9 +628,6 @@ def run_critic_agent(
     opportunity: Dict[str, Any],
     stats: Dict[str, Any],
 ) -> Dict[str, Any]:
-    """
-    Independently verify the Decision Agent. Returns APPROVED or REVISE.
-    """
     problems: List[str] = []
     evidence: List[str] = []
 
