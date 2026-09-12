@@ -1,8 +1,5 @@
 """
 Centralized financial state for FinTrack AI.
-
-Holds the shared state passed between agents and exposes helpers for the UI.
-Designed to be stored in Streamlit session_state.
 """
 from __future__ import annotations
 
@@ -33,8 +30,6 @@ def empty_agent_status() -> Dict[str, Dict[str, Any]]:
 
 @dataclass
 class FinancialState:
-    """Shared agent state. One instance per analysis run."""
-
     df: Optional[pd.DataFrame] = None
     quality: Dict[str, Any] = field(default_factory=dict)
     stats: Dict[str, Any] = field(default_factory=dict)
@@ -47,7 +42,6 @@ class FinancialState:
     revision_count: int = 0
     errors: List[str] = field(default_factory=list)
 
-    # ------------------------------------------------------------------
     def set_status(self, agent: str, status: str, message: str = "", detail: str = "") -> None:
         if agent not in self.agent_status:
             self.agent_status[agent] = {"status": "pending", "message": "", "detail": ""}
@@ -60,7 +54,6 @@ class FinancialState:
         data["df"] = None
         return data
 
-    # ------------------------------------------------------------------
     def is_complete(self) -> bool:
         return (
             self.df is not None
@@ -69,9 +62,7 @@ class FinancialState:
             and bool(self.summary)
         )
 
-    # ------------------------------------------------------------------
     def financial_health_score(self) -> int:
-        """0–100 derived from cash flow, expense ratio, and risk score."""
         if not self.stats or not self.risk:
             return 0
         score = 100.0
@@ -116,10 +107,6 @@ class FinancialState:
 # Convenience accessors used by every page
 # =====================================================================
 def get_financial_state() -> FinancialState:
-    """
-    Return the FinancialState stored in Streamlit session_state,
-    creating an empty one if it doesn't exist yet.
-    """
     import streamlit as st
 
     if "fin_state" not in st.session_state:
@@ -128,7 +115,6 @@ def get_financial_state() -> FinancialState:
 
 
 def reset_financial_state() -> FinancialState:
-    """Clear and return a fresh FinancialState in session_state."""
     import streamlit as st
 
     st.session_state.fin_state = FinancialState()
