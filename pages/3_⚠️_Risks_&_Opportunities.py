@@ -32,7 +32,7 @@ CSS = """
 .ft-item-desc { color:#475569; font-size:.87rem; margin-top:6px; line-height:1.55; }
 .ft-item-ev { color:#94a3b8; font-size:.78rem; margin-top:8px; font-family:ui-monospace,Menlo,monospace; }
 .ft-sev { display:inline-block; padding:3px 9px; border-radius:999px; font-size:.7rem;
-    font-weight:700; letter-spacing:.04em; margin-left:8px; }
+    font-weight:700; margin-left:8px; }
 .ft-sev-HIGH { background:rgba(239,68,68,.12); color:#b91c1c; }
 .ft-sev-MEDIUM { background:rgba(245,158,11,.12); color:#b45309; }
 .ft-sev-LOW { background:rgba(16,185,129,.12); color:#047857; }
@@ -51,8 +51,7 @@ def _sev(sev: str) -> str:
 def _risk_gauge(score: int, level: str) -> go.Figure:
     color = {"HIGH": "#ef4444", "MEDIUM": "#f59e0b", "LOW": "#10b981"}.get(level, "#94a3b8")
     fig = go.Figure(go.Indicator(
-        mode="gauge+number",
-        value=score,
+        mode="gauge+number", value=score,
         number={"suffix": " / 100", "font": {"size": 28, "color": "#0f172a"}},
         gauge={
             "axis": {"range": [0, 100], "tickwidth": 1, "tickcolor": "#cbd5e1"},
@@ -62,11 +61,9 @@ def _risk_gauge(score: int, level: str) -> go.Figure:
                 {"range": [0, 30], "color": "rgba(16,185,129,0.08)"},
                 {"range": [30, 60], "color": "rgba(245,158,11,0.08)"},
                 {"range": [60, 100], "color": "rgba(239,68,68,0.08)"},
-            ],
-        },
-    ))
+            ]}))
     fig.update_layout(height=200, margin=dict(l=10, r=10, t=10, b=10),
-                      paper_bgcolor="white", font=dict(family="Inter, sans-serif"))
+                      paper_bgcolor="white")
     return fig
 
 
@@ -74,25 +71,23 @@ def main() -> None:
     state: FinancialState = get_financial_state()
 
     st.markdown('<div class="ft-h1">Risks & Opportunities</div>', unsafe_allow_html=True)
-    st.markdown('<div class="ft-sub">Decision-oriented view of what could hurt you and what could help you.</div>',
+    st.markdown('<div class="ft-sub">What could hurt you, what could help you.</div>',
                 unsafe_allow_html=True)
     st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 
-    if not state.risk or not state.opportunity:
+    if state.df is None or state.df.empty or not state.risk or not state.opportunity:
         st.info("Run an analysis on the Overview page first.")
         return
 
-    c1, c2 = st.columns([1, 1])
+    c1, c2 = st.columns(2)
     with c1:
         st.markdown('<div class="ft-kpi-label">Risk Score</div>', unsafe_allow_html=True)
         st.plotly_chart(_risk_gauge(state.risk["risk_score"], state.risk["risk_level"]),
                         use_container_width=True, config={"displayModeBar": False})
         st.markdown(
             f'<div style="text-align:center;margin-top:-10px;">'
-            f'<span class="ft-sev ft-sev-{state.risk["risk_level"]}">'
-            f'{state.risk["risk_level"]} RISK</span></div>',
-            unsafe_allow_html=True,
-        )
+            f'<span class="ft-sev ft-sev-{state.risk["risk_level"]}">{state.risk["risk_level"]} RISK</span></div>',
+            unsafe_allow_html=True)
     with c2:
         st.markdown('<div class="ft-kpi-label">Opportunity Score</div>', unsafe_allow_html=True)
         st.plotly_chart(_risk_gauge(state.opportunity["opportunity_score"], "LOW"),
@@ -101,8 +96,7 @@ def main() -> None:
             f'<div style="text-align:center;margin-top:-10px;">'
             f'<span style="color:#64748b;font-size:.82rem;">'
             f'{len(state.opportunity["opportunities"])} opportunities identified</span></div>',
-            unsafe_allow_html=True,
-        )
+            unsafe_allow_html=True)
 
     st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
     left, right = st.columns(2)
@@ -117,17 +111,13 @@ def main() -> None:
                 f'<div class="ft-item-title">{r["title"]}{_sev(r.get("severity","LOW"))}</div>'
                 f'<div class="ft-item-desc">{r["description"]}</div>'
                 f'<div class="ft-item-ev">↳ {r.get("evidence", "")}</div>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
+                f'</div>', unsafe_allow_html=True)
         if state.risk.get("reasoning"):
             st.markdown(
                 f'<div class="ft-card" style="margin-top:10px;">'
                 f'<div class="ft-kpi-label">Risk Agent Reasoning</div>'
                 f'<div style="color:#475569;font-size:.88rem;line-height:1.6;">{state.risk["reasoning"]}</div>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
+                f'</div>', unsafe_allow_html=True)
 
     with right:
         st.markdown('<div class="ft-kpi-label">Opportunities</div>', unsafe_allow_html=True)
@@ -139,21 +129,16 @@ def main() -> None:
                 f'<div class="ft-item-title">↑ {o["title"]}{_sev(o.get("impact","LOW"))}</div>'
                 f'<div class="ft-item-desc">{o["description"]}</div>'
                 f'<div class="ft-item-ev">↳ {o.get("evidence", "")}</div>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
+                f'</div>', unsafe_allow_html=True)
         if state.opportunity.get("reasoning"):
             st.markdown(
                 f'<div class="ft-card" style="margin-top:10px;">'
                 f'<div class="ft-kpi-label">Opportunity Agent Reasoning</div>'
                 f'<div style="color:#475569;font-size:.88rem;line-height:1.6;">{state.opportunity["reasoning"]}</div>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
+                f'</div>', unsafe_allow_html=True)
 
     if state.decision:
-        st.markdown('<div class="ft-kpi-label">Recommended Actions (from Decision Agent)</div>',
-                    unsafe_allow_html=True)
+        st.markdown('<div class="ft-kpi-label">Recommended Actions</div>', unsafe_allow_html=True)
         actions = state.decision.get("recommended_actions", [])
         if actions:
             st.markdown('<div class="ft-card">', unsafe_allow_html=True)
@@ -164,11 +149,9 @@ def main() -> None:
                     f'<div style="width:24px;height:24px;border-radius:7px;'
                     f'background:linear-gradient(135deg,#2563eb,#3b82f6);color:#fff;'
                     f'display:flex;align-items:center;justify-content:center;'
-                    f'font-size:.75rem;font-weight:700;flex-shrink:0;">{i}</div>'
+                    f'font-size:.75rem;font-weight:700;">{i}</div>'
                     f'<div style="color:#334155;line-height:1.5;">{a}</div>'
-                    f'</div>',
-                    unsafe_allow_html=True,
-                )
+                    f'</div>', unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
 
 
