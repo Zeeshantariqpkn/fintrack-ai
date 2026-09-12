@@ -1,5 +1,5 @@
 """
-Settings page — Groq API, Vector DB, analysis settings, data reset.
+Settings page.
 """
 from __future__ import annotations
 
@@ -15,16 +15,12 @@ import streamlit as st
 
 from agents.strategic_agents import hf_available
 from utils.financial_state import (
-    FinancialState,
-    get_financial_state,
-    reset_financial_state,
+    FinancialState, get_financial_state, reset_financial_state,
 )
 from utils.ui import render_sidebar
 from utils.vector_store import (
-    DEFAULT_EMBEDDING_MODEL,
-    build_documents_from_state,
-    get_vector_store,
-    reset_vector_store,
+    DEFAULT_EMBEDDING_MODEL, build_documents_from_state,
+    get_vector_store, reset_vector_store,
 )
 
 st.set_page_config(page_title="Settings — FinTrack AI", page_icon="⚙️", layout="wide")
@@ -50,7 +46,7 @@ render_sidebar()
 
 def main() -> None:
     st.markdown('<div class="ft-h1">Settings</div>', unsafe_allow_html=True)
-    st.markdown('<div class="ft-sub">Configure Groq LLM, the vector database, and analysis behavior.</div>',
+    st.markdown('<div class="ft-sub">Configure Groq LLM, vector DB, and analysis.</div>',
                 unsafe_allow_html=True)
 
     st.session_state.setdefault("config", {
@@ -61,18 +57,13 @@ def main() -> None:
     })
     config = st.session_state.config
 
-    # =================================================================
-    # Groq API
-    # =================================================================
     st.markdown('<div class="ft-kpi-label">Groq API</div>', unsafe_allow_html=True)
     st.markdown('<div class="ft-card">', unsafe_allow_html=True)
 
     if hf_available():
-        st.markdown(
-            '<span class="ft-badge-ok">● GROQ_API_KEY detected</span>',
-            unsafe_allow_html=True,
-        )
-        st.caption("Model: llama-3.3-70b-versatile · Fast inference · Free tier available")
+        st.markdown('<span class="ft-badge-ok">● GROQ_API_KEY detected</span>',
+                    unsafe_allow_html=True)
+        st.caption("Model: llama-3.3-70b-versatile · Fast inference · Free tier")
         if st.button("Test Groq connection"):
             import requests as _requests
             key = os.environ.get("GROQ_API_KEY", "")
@@ -86,13 +77,11 @@ def main() -> None:
                     "https://api.groq.com/openai/v1/chat/completions",
                     headers={"Authorization": f"Bearer {key}"},
                     json={
-                        # "model": "llama-3.1-8b-instant",
-                        "model": "openai/gpt-oss-20b",
+                        "model": "llama-3.3-70b-versatile",
                         "messages": [{"role": "user", "content": "Say OK."}],
                         "max_tokens": 5,
                     },
-                    timeout=15,
-                )
+                    timeout=15)
                 if r.status_code == 200:
                     st.success("Groq connection OK.")
                 else:
@@ -100,52 +89,26 @@ def main() -> None:
             except Exception as exc:
                 st.error(f"Connection error: {exc}")
     else:
-        st.markdown(
-            '<span class="ft-badge-warn">● GROQ_API_KEY not configured</span>',
-            unsafe_allow_html=True,
-        )
-        st.caption(
-            "To enable AI features, add your Groq API key. Get one free at "
-            "https://console.groq.com/keys"
-        )
-        st.code(
-            '# .streamlit/secrets.toml\nGROQ_API_KEY = "gsk_xxxxxxxxxxxx"',
-            language="toml",
-        )
-        st.caption(
-            "Without a key, the app runs in deterministic fallback mode — "
-            "categorization, risk analysis, decisions, and the copilot all still work."
-        )
+        st.markdown('<span class="ft-badge-warn">● GROQ_API_KEY not configured</span>',
+                    unsafe_allow_html=True)
+        st.caption("Get a free key at https://console.groq.com/keys")
+        st.code('# .streamlit/secrets.toml\nGROQ_API_KEY = "gsk_xxxxxxxxxxxx"', language="toml")
 
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # =================================================================
-    # Vector Database
-    # =================================================================
     st.markdown('<div class="ft-kpi-label">Vector Database</div>', unsafe_allow_html=True)
     st.markdown('<div class="ft-card">', unsafe_allow_html=True)
 
     config["use_vector_db"] = st.toggle(
         "Enable vector database for the AI Copilot",
-        value=config["use_vector_db"],
-        help=(
-            "When enabled, the Copilot retrieves the most relevant financial evidence "
-            "from an in-memory vector index before answering. No external service required."
-        ),
-    )
+        value=config["use_vector_db"])
 
     config["embedding_model"] = st.text_input(
         "Embedding model",
-        value=config["embedding_model"],
-        help=(
-            "Optional HF model. Only used when HF_TOKEN is set — otherwise "
-            "a deterministic hash-based embedding is used."
-        ),
-    )
+        value=config["embedding_model"])
 
     store = get_vector_store()
     stats = store.stats()
-
     cols = st.columns(3)
     with cols[0]:
         st.metric("Documents", stats["size"])
@@ -160,15 +123,12 @@ def main() -> None:
     with col_a:
         if st.button("Rebuild vector index", type="primary", use_container_width=True):
             if not state.is_complete():
-                st.warning("Run an analysis on the Overview page first.")
+                st.warning("Run an analysis first.")
             else:
                 docs = build_documents_from_state(state)
-                store.build(
-                    docs,
-                    model=config["embedding_model"],
-                    prefer_hf=bool(os.environ.get("HF_TOKEN")),
-                )
-                st.success(f"Indexed {len(docs)} documents using provider '{store.provider}'.")
+                store.build(docs, model=config["embedding_model"],
+                            prefer_hf=bool(os.environ.get("HF_TOKEN")))
+                st.success(f"Indexed {len(docs)} documents using '{store.provider}'.")
     with col_b:
         if st.button("Clear vector index", use_container_width=True):
             reset_vector_store()
@@ -176,49 +136,28 @@ def main() -> None:
 
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # =================================================================
-    # Analysis Settings
-    # =================================================================
     st.markdown('<div class="ft-kpi-label">Analysis Settings</div>', unsafe_allow_html=True)
     st.markdown('<div class="ft-card">', unsafe_allow_html=True)
     config["use_ai_categorization"] = st.toggle(
-        "Use AI categorization",
-        value=config["use_ai_categorization"],
-        help="When off, the Categorization Agent uses deterministic keyword matching.",
-    )
+        "Use AI categorization", value=config["use_ai_categorization"])
     config["use_ai_insights"] = st.toggle(
-        "Use AI insight generation",
-        value=config["use_ai_insights"],
-        help="When off, the Insight Agent uses the deterministic briefing template.",
-    )
+        "Use AI insight generation", value=config["use_ai_insights"])
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # =================================================================
-    # Data
-    # =================================================================
     st.markdown('<div class="ft-kpi-label">Data</div>', unsafe_allow_html=True)
     st.markdown('<div class="ft-card">', unsafe_allow_html=True)
     if state.df is not None:
-        st.caption(
-            f"Current analysis: {len(state.df)} transactions · "
-            f"{state.quality.get('date_range', 'n/a')}"
-        )
+        st.caption(f"Current: {len(state.df)} transactions · "
+                   f"{state.quality.get('date_range', 'n/a')}")
     else:
         st.caption("No analysis loaded.")
     if st.button("Clear current analysis", type="secondary"):
         reset_financial_state()
         reset_vector_store()
-        st.session_state.pop("analysis_done", None)
-        st.session_state.pop("copilot_history", None)
-        st.success("Analysis and vector index cleared.")
+        for k in ("analysis_done", "copilot_history", "show_landing"):
+            st.session_state.pop(k, None)
+        st.success("Cleared.")
     st.markdown('</div>', unsafe_allow_html=True)
-
-    st.markdown(
-        '<div style="color:#94a3b8;font-size:.78rem;margin-top:12px;">'
-        "Your Groq API key is never displayed or stored in session state."
-        "</div>",
-        unsafe_allow_html=True,
-    )
 
 
 main()
