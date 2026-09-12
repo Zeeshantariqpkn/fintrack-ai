@@ -13,6 +13,7 @@ if str(ROOT) not in sys.path:
 import streamlit as st
 
 from utils.financial_state import FinancialState, get_financial_state
+from utils.ui import render_sidebar
 
 st.set_page_config(page_title="Transactions — FinTrack AI", page_icon="📁", layout="wide")
 
@@ -25,6 +26,8 @@ CSS = """
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
+
+render_sidebar()
 
 
 def main() -> None:
