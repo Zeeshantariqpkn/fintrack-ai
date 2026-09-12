@@ -13,6 +13,7 @@ if str(ROOT) not in sys.path:
 import streamlit as st
 
 from utils.financial_state import FinancialState, get_financial_state
+from utils.ui import render_sidebar
 
 st.set_page_config(page_title="Agent Center — FinTrack AI", page_icon="🤖", layout="wide")
 
@@ -43,6 +44,8 @@ CSS = """
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
+
+render_sidebar()
 
 
 def _status_pill(status: str) -> str:
@@ -172,11 +175,11 @@ def main() -> None:
         counts = state.df["category"].value_counts().to_dict()
         _agent_card(
             name="Categorization Agent", icon="②",
-            responsibility="Classifies every transaction into one of the fixed categories using Hugging Face or keyword fallback.",
+            responsibility="Classifies every transaction into one of the fixed categories using Groq or keyword fallback.",
             inputs=f"{len(state.df)} cleaned transactions",
             output=", ".join(f"{k}: {v}" for k, v in list(counts.items())[:5]),
             reasoning="Enforced the category set — no invalid categories can escape. "
-                      "AI used when HF_TOKEN is present, otherwise deterministic keyword matching.",
+                      "AI used when GROQ_API_KEY is present, otherwise deterministic keyword matching.",
             evidence=f"categories={len(counts)} · avg_confidence={state.df['category_confidence'].mean():.2f}",
             status=a["Categorization Agent"]["status"], status_msg=a["Categorization Agent"]["message"],
         )
