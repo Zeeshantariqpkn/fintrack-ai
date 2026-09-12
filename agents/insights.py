@@ -1,5 +1,5 @@
 """
-Insight Agent — executive financial briefing.
+Insight Agent — executive briefing.
 """
 from __future__ import annotations
 
@@ -9,19 +9,11 @@ from typing import Any, Dict
 from agents.strategic_agents import call_hf, hf_available
 
 
-def _deterministic_summary(
-    stats: Dict[str, Any],
-    risk: Dict[str, Any],
-    opportunity: Dict[str, Any],
-    decision: Dict[str, Any],
-    critic: Dict[str, Any],
-    health_score: int,
-    health_label: str,
-) -> Dict[str, Any]:
+def _deterministic_summary(stats, risk, opportunity, decision, critic,
+                           health_score, health_label) -> Dict[str, Any]:
     revenue = stats.get("total_revenue", 0.0)
     expenses = stats.get("total_expenses", 0.0)
     net = stats.get("net_cash_flow", 0.0)
-    er = stats.get("expense_ratio", 0.0)
 
     cash_flow_line = (
         f"Revenue remains {'significantly above' if net > 0 else 'below'} total "
@@ -39,8 +31,7 @@ def _deterministic_summary(
 
     narrative = (
         f"Financial Health: {health_score}/100 — {health_label}\n\n"
-        f"{cash_flow_line}\n\n"
-        f"{opp_line}\n\n"
+        f"{cash_flow_line}\n\n{opp_line}\n\n"
         f"Recommended next step: {next_step}"
     )
 
@@ -53,35 +44,24 @@ def _deterministic_summary(
     }
 
 
-def run_insight_agent(
-    stats: Dict[str, Any],
-    risk: Dict[str, Any],
-    opportunity: Dict[str, Any],
-    decision: Dict[str, Any],
-    critic: Dict[str, Any],
-    health_score: int,
-    health_label: str,
-    use_ai: bool = True,
-) -> Dict[str, Any]:
-    fallback = _deterministic_summary(
-        stats, risk, opportunity, decision, critic, health_score, health_label
-    )
+def run_insight_agent(stats, risk, opportunity, decision, critic,
+                      health_score, health_label, use_ai: bool = True) -> Dict[str, Any]:
+    fallback = _deterministic_summary(stats, risk, opportunity, decision, critic,
+                                     health_score, health_label)
 
     if not (use_ai and hf_available()):
         return fallback
 
     prompt = (
-        "You are the Insight Agent in a financial analytics system. Write a concise "
-        "executive briefing (max 150 words) using ONLY the data provided. Include the "
-        "financial health score, cash-flow status, the top opportunity, and the "
-        "recommended next step. Do not invent numbers.\n\n"
+        "You are the Insight Agent. Write a concise executive briefing (max 150 words) "
+        "using ONLY the data provided. Include health score, cash-flow status, top "
+        "opportunity, and recommended next step. Do not invent numbers.\n\n"
         f"Health: {health_score}/100 ({health_label})\n"
         f"Analytics: {json.dumps({k: v for k, v in stats.items() if k != 'monthly'})[:1800]}\n"
         f"Risk: {json.dumps(risk)[:1000]}\n"
         f"Opportunity: {json.dumps(opportunity)[:1000]}\n"
         f"Decision: {json.dumps(decision)[:1000]}\n"
-        f"Critic: {json.dumps(critic)[:600]}\n\n"
-        "Briefing:"
+        f"Critic: {json.dumps(critic)[:600]}\n\nBriefing:"
     )
     text = call_hf(prompt, max_new_tokens=300, temperature=0.4)
     if not text:
