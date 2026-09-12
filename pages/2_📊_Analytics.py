@@ -1,5 +1,5 @@
 """
-Analytics page — deep dive with Plotly charts.
+Analytics page.
 """
 from __future__ import annotations
 
@@ -43,8 +43,8 @@ def _base_layout(fig, height=320, y_prefix=False):
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         xaxis=dict(showgrid=False, linecolor="#e2e8f0"),
         yaxis=dict(showgrid=True, gridcolor="#f1f5f9",
-                   tickprefix="$" if y_prefix else "", tickformat=",.0f" if y_prefix else ""),
-        hoverlabel=dict(bgcolor="white", bordercolor="#e2e8f0", font_size=12),
+                   tickprefix="$" if y_prefix else "",
+                   tickformat=",.0f" if y_prefix else ""),
     )
     return fig
 
@@ -53,12 +53,15 @@ def main() -> None:
     state: FinancialState = get_financial_state()
 
     st.markdown('<div class="ft-h1">Analytics</div>', unsafe_allow_html=True)
-    st.markdown('<div class="ft-sub">Revenue, expenses, cash flow, categories, vendors, and recurring costs.</div>',
+    st.markdown('<div class="ft-sub">Revenue, expenses, cash flow, categories, vendors, recurring costs.</div>',
                 unsafe_allow_html=True)
     st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 
-    if not state.stats or state.df is None:
-        st.info("Run an analysis on the Overview page first.")
+    if state.df is None or state.df.empty:
+        st.info("No analysis loaded. Go to **Overview** and upload a file.")
+        return
+    if not state.stats:
+        st.warning("Analysis is incomplete. Go to **Overview** and re-run.")
         return
 
     s = state.stats
@@ -66,17 +69,13 @@ def main() -> None:
 
     c1, c2, c3, c4 = st.columns(4)
     with c1:
-        st.markdown(f'<div class="ft-card ft-mini">Revenue<div class="v">${s["total_revenue"]:,.0f}</div></div>',
-                    unsafe_allow_html=True)
+        st.markdown(f'<div class="ft-card ft-mini">Revenue<div class="v">${s["total_revenue"]:,.0f}</div></div>', unsafe_allow_html=True)
     with c2:
-        st.markdown(f'<div class="ft-card ft-mini">Expenses<div class="v">${s["total_expenses"]:,.0f}</div></div>',
-                    unsafe_allow_html=True)
+        st.markdown(f'<div class="ft-card ft-mini">Expenses<div class="v">${s["total_expenses"]:,.0f}</div></div>', unsafe_allow_html=True)
     with c3:
-        st.markdown(f'<div class="ft-card ft-mini">Net Cash Flow<div class="v">${s["net_cash_flow"]:,.0f}</div></div>',
-                    unsafe_allow_html=True)
+        st.markdown(f'<div class="ft-card ft-mini">Net Cash Flow<div class="v">${s["net_cash_flow"]:,.0f}</div></div>', unsafe_allow_html=True)
     with c4:
-        st.markdown(f'<div class="ft-card ft-mini">Expense Ratio<div class="v">{s["expense_ratio"]:.1f}%</div></div>',
-                    unsafe_allow_html=True)
+        st.markdown(f'<div class="ft-card ft-mini">Expense Ratio<div class="v">{s["expense_ratio"]:.1f}%</div></div>', unsafe_allow_html=True)
 
     monthly = s["monthly"]
 
@@ -88,8 +87,7 @@ def main() -> None:
             x=[m["month"] for m in monthly], y=[m["revenue"] for m in monthly],
             mode="lines+markers", fill="tozeroy",
             line=dict(color="#2563eb", width=3), marker=dict(size=8, color="#2563eb"),
-            fillcolor="rgba(37,99,235,0.08)", name="Revenue",
-        ))
+            fillcolor="rgba(37,99,235,0.08)", name="Revenue"))
         _base_layout(fig, y_prefix=True)
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
     with col2:
@@ -98,8 +96,7 @@ def main() -> None:
             x=[m["month"] for m in monthly], y=[m["expenses"] for m in monthly],
             mode="lines+markers", fill="tozeroy",
             line=dict(color="#ef4444", width=3), marker=dict(size=8, color="#ef4444"),
-            fillcolor="rgba(239,68,68,0.08)", name="Expenses",
-        ))
+            fillcolor="rgba(239,68,68,0.08)", name="Expenses"))
         _base_layout(fig, y_prefix=True)
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
@@ -107,11 +104,9 @@ def main() -> None:
     col1, col2 = st.columns(2)
     with col1:
         fig = go.Figure()
-        fig.add_bar(
-            x=[m["month"] for m in monthly], y=[m["net"] for m in monthly],
-            marker_color=["#10b981" if m["net"] >= 0 else "#ef4444" for m in monthly],
-            name="Net Cash Flow",
-        )
+        fig.add_bar(x=[m["month"] for m in monthly], y=[m["net"] for m in monthly],
+                    marker_color=["#10b981" if m["net"] >= 0 else "#ef4444" for m in monthly],
+                    name="Net Cash Flow")
         _base_layout(fig, y_prefix=True)
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
     with col2:
@@ -120,14 +115,11 @@ def main() -> None:
             colors = ["#2563eb", "#3b82f6", "#60a5fa", "#93c5fd",
                       "#a5b4fc", "#c7d2fe", "#ddd6fe", "#e0e7ff"]
             fig = go.Figure(go.Pie(
-                labels=list(cat.keys()), values=list(cat.values()),
-                hole=0.55,
+                labels=list(cat.keys()), values=list(cat.values()), hole=0.55,
                 marker=dict(colors=colors[:len(cat)], line=dict(color="white", width=2)),
-                textinfo="label+percent",
-            ))
+                textinfo="label+percent"))
             fig.update_layout(plot_bgcolor="white", paper_bgcolor="white",
-                              height=320, showlegend=False,
-                              font=dict(family="Inter, sans-serif"))
+                              height=320, showlegend=False)
             st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
         else:
             st.info("No expense categories available.")
@@ -138,8 +130,7 @@ def main() -> None:
         v_items = list(vendors.items())[:10][::-1]
         fig = go.Figure(go.Bar(
             x=[v for _, v in v_items], y=[k for k, _ in v_items],
-            orientation="h", marker_color="#3b82f6",
-        ))
+            orientation="h", marker_color="#3b82f6"))
         _base_layout(fig, height=340)
         fig.update_xaxes(tickprefix="$", tickformat=",.0f")
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
@@ -156,11 +147,9 @@ def main() -> None:
                 st.markdown(
                     f'<div style="display:flex;justify-content:space-between;padding:8px 0;'
                     f'border-bottom:1px dashed #e2e8f0;font-size:.85rem;">'
-                    f'<span style="color:#334155;">{r["description"]}</span>'
-                    f'<span style="color:#0f172a;font-weight:700;">${r["avg_amount"]:,.0f} × {r["occurrences"]}</span>'
-                    f'</div>',
-                    unsafe_allow_html=True,
-                )
+                    f'<span>{r["description"]}</span>'
+                    f'<span style="font-weight:700;">${r["avg_amount"]:,.0f} × {r["occurrences"]}</span>'
+                    f'</div>', unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
         else:
             st.info("No recurring expense patterns detected.")
@@ -173,8 +162,7 @@ def main() -> None:
         fig.add_trace(go.Scatter(
             x=[m["month"] for m in monthly], y=[m["net"] for m in monthly],
             name="Net", mode="lines+markers",
-            line=dict(color="#2563eb", width=3), marker=dict(size=8, color="#2563eb"),
-        ))
+            line=dict(color="#2563eb", width=3), marker=dict(size=8, color="#2563eb")))
         fig.update_layout(barmode="group")
         _base_layout(fig, y_prefix=True)
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
