@@ -1,8 +1,5 @@
 """
 Categorization Agent.
-
-Classifies every transaction into one of the fixed categories. Uses Groq when
-available; falls back to deterministic keyword matching.
 """
 from __future__ import annotations
 
@@ -14,48 +11,29 @@ import pandas as pd
 from agents.strategic_agents import call_hf, hf_available, _safe_json
 
 CATEGORIES: List[str] = [
-    "Payroll",
-    "Vendors",
-    "Utilities",
-    "Marketing",
-    "Subscriptions",
-    "Rent",
-    "Income",
-    "Other",
+    "Payroll", "Vendors", "Utilities", "Marketing",
+    "Subscriptions", "Rent", "Income", "Other",
 ]
-
 _CATEGORY_SET = set(CATEGORIES)
 
 _KEYWORDS: Dict[str, List[str]] = {
-    "Payroll": [
-        "payroll", "salary", "salaries", "wage", "wages", "gusto", "adp",
-        "paychex", "compensation", "bonus", "contractor", "freelance",
-    ],
+    "Payroll": ["payroll", "salary", "salaries", "wage", "wages", "gusto", "adp",
+                "paychex", "compensation", "bonus", "contractor", "freelance"],
     "Rent": ["rent", "lease", "wework", "office space", "property", "landlord"],
-    "Utilities": [
-        "utility", "utilities", "electric", "electricity", "water", "gas",
-        "internet", "pg&e", "pge", "comcast", "verizon", "at&t", "att",
-        "phone", "mobile",
-    ],
-    "Marketing": [
-        "ads", "advertising", "marketing", "google ads", "facebook ads",
-        "facebook", "meta ads", "instagram", "tiktok", "linkedin ads",
-        "campaign", "seo", "promotion", "hubspot", "mailchimp",
-    ],
-    "Subscriptions": [
-        "subscription", "notion", "slack", "figma", "adobe", "zoom",
-        "github", "dropbox", "spotify", "netflix", "saas", "license",
-        "creative cloud", "canva", "crm",
-    ],
-    "Vendors": [
-        "aws", "amazon web services", "azure", "gcp", "google cloud",
-        "hosting", "server", "cloud", "supplier", "vendor", "inventory",
-        "shipping", "logistics", "stripe fees", "paypal fees",
-    ],
-    "Income": [
-        "stripe payout", "payout", "revenue", "income", "sales", "invoice",
-        "customer", "client", "deposit", "shopify payout", "payment received",
-    ],
+    "Utilities": ["utility", "utilities", "electric", "electricity", "water", "gas",
+                  "internet", "pg&e", "pge", "comcast", "verizon", "at&t", "att",
+                  "phone", "mobile"],
+    "Marketing": ["ads", "advertising", "marketing", "google ads", "facebook ads",
+                  "facebook", "meta ads", "instagram", "tiktok", "linkedin ads",
+                  "campaign", "seo", "promotion", "hubspot", "mailchimp"],
+    "Subscriptions": ["subscription", "notion", "slack", "figma", "adobe", "zoom",
+                      "github", "dropbox", "spotify", "netflix", "saas", "license",
+                      "creative cloud", "canva", "crm"],
+    "Vendors": ["aws", "amazon web services", "azure", "gcp", "google cloud",
+                "hosting", "server", "cloud", "supplier", "vendor", "inventory",
+                "shipping", "logistics", "stripe fees", "paypal fees"],
+    "Income": ["stripe payout", "payout", "revenue", "income", "sales", "invoice",
+               "customer", "client", "deposit", "shopify payout", "payment received"],
 }
 
 
@@ -79,8 +57,7 @@ def _keyword_category(description: str, amount: float) -> tuple[str, float]:
             return "Income", 0.4
         return "Other", 0.35
 
-    confidence = min(0.95, 0.55 + best_score * 0.08)
-    return best_cat, confidence
+    return best_cat, min(0.95, 0.55 + best_score * 0.08)
 
 
 def _llm_categorize_batch(batch: List[Dict[str, Any]]) -> Dict[str, str]:
@@ -88,8 +65,7 @@ def _llm_categorize_batch(batch: List[Dict[str, Any]]) -> Dict[str, str]:
         return {}
     prompt = (
         "You are a financial transaction categorizer. Categorize each transaction "
-        "into EXACTLY ONE of these categories: "
-        f"{', '.join(CATEGORIES)}.\n"
+        f"into EXACTLY ONE of these categories: {', '.join(CATEGORIES)}.\n"
         "Respond ONLY with a JSON object mapping transaction_id to category.\n\n"
         f"Transactions:\n{json.dumps(batch)[:3500]}\n\nJSON:"
     )
@@ -123,11 +99,9 @@ def run_categorization_agent(
         for i in range(0, len(df), batch_size):
             chunk = df.iloc[i : i + batch_size]
             batch = [
-                {
-                    "transaction_id": row["transaction_id"],
-                    "description": str(row["description"])[:120],
-                    "amount": float(row["amount"]),
-                }
+                {"transaction_id": row["transaction_id"],
+                 "description": str(row["description"])[:120],
+                 "amount": float(row["amount"])}
                 for _, row in chunk.iterrows()
             ]
             ai_map.update(_llm_categorize_batch(batch))
@@ -136,7 +110,6 @@ def run_categorization_agent(
         tid = row["transaction_id"]
         desc = str(row["description"])
         amt = float(row["amount"])
-
         kw_cat, kw_conf = _keyword_category(desc, amt)
 
         if tid in ai_map:
@@ -150,7 +123,6 @@ def run_categorization_agent(
 
     df["category"] = categories
     df["category_confidence"] = confidences
-
     df["category"] = df["category"].apply(lambda c: c if c in _CATEGORY_SET else "Other")
 
     counts = df["category"].value_counts().to_dict()
