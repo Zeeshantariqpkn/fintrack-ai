@@ -1,9 +1,5 @@
 """
-Decision orchestration.
-
-Runs the Decision Agent → Critic Agent loop, applying revision feedback until
-the Critic approves or the revision cap is reached. Keeps the rest of the app
-free of control-flow logic.
+Decision orchestration — Decision Agent → Critic Agent loop.
 """
 from __future__ import annotations
 
@@ -19,9 +15,6 @@ def run_decision_with_critique(
     risk: Dict[str, Any],
     opportunity: Dict[str, Any],
 ) -> Tuple[Dict[str, Any], Dict[str, Any], int, str]:
-    """
-    Returns (decision, critic, revision_count, loop_summary).
-    """
     revision_hint = None
     decision: Dict[str, Any] = {}
     critic: Dict[str, Any] = {}
