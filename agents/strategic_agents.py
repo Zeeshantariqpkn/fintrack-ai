@@ -20,7 +20,8 @@ except ImportError:  # pragma: no cover
     requests = None  # type: ignore
 
 
-GROQ_MODEL = "llama-3.1-8b-instant"
+# GROQ_MODEL = "llama-3.1-8b-instant"
+GROQ_MODEL = "openai/gpt-oss-20b"
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 
