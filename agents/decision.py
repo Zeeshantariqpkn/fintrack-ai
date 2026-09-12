@@ -1,5 +1,5 @@
 """
-Decision orchestration — Decision Agent → Critic Agent loop.
+Decision orchestration — Decision → Critic loop.
 """
 from __future__ import annotations
 
@@ -31,10 +31,8 @@ def run_decision_with_critique(
             critic = dict(critic)
             critic["status"] = "APPROVED"
             critic["approved"] = True
-            critic["reasoning"] = (
-                "Revision cap reached. Final decision accepted after "
-                f"{MAX_REVISIONS} revision(s). " + critic.get("reasoning", "")
-            )
+            critic["reasoning"] = (f"Revision cap reached. Final decision accepted after "
+                                 f"{MAX_REVISIONS} revision(s). " + critic.get("reasoning", ""))
             break
 
     if revisions == 0:
