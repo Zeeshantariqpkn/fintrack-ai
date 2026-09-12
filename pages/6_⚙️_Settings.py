@@ -86,7 +86,7 @@ def main() -> None:
                     "https://api.groq.com/openai/v1/chat/completions",
                     headers={"Authorization": f"Bearer {key}"},
                     json={
-                        "model": "llama-3.3-70b-versatile",
+                         "model": "llama-3.1-8b-instant",
                         "messages": [{"role": "user", "content": "Say OK."}],
                         "max_tokens": 5,
                     },
