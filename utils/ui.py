@@ -1,6 +1,5 @@
 """
-Shared UI helpers: sidebar rendering, page registration, and CSS to hide
-Streamlit's automatic page navigation (we render our own nav).
+Shared UI helpers: sidebar rendering + auto-nav hider.
 """
 from __future__ import annotations
 
@@ -25,6 +24,18 @@ section[data-testid="stSidebar"] nav[aria-label="Page navigation"] {
 
 def inject_auto_nav_hider() -> None:
     st.markdown(HIDE_AUTO_NAV_CSS, unsafe_allow_html=True)
+
+
+def _clear_all_state() -> None:
+    from utils.financial_state import reset_financial_state
+    from utils.vector_store import reset_vector_store
+    reset_financial_state()
+    reset_vector_store()
+    for k in (
+        "analysis_done", "pending_upload_trigger",
+        "copilot_history", "show_landing", "copilot_pending",
+    ):
+        st.session_state.pop(k, None)
 
 
 def render_sidebar() -> None:
@@ -57,6 +68,19 @@ def render_sidebar() -> None:
         st.page_link("pages/4_💬_AI_Copilot.py", label="AI Copilot", icon="💬")
         st.page_link("pages/5_📁_Transactions.py", label="Transactions", icon="📁")
         st.page_link("pages/6_⚙️_Settings.py", label="Settings", icon="⚙️")
+
+        st.markdown('<div class="ft-divider"></div>', unsafe_allow_html=True)
+
+        st.markdown("**Actions**")
+        if st.button("📤 Upload new file", use_container_width=True, key="sb_upload_new"):
+            _clear_all_state()
+            st.session_state["show_landing"] = True
+            st.switch_page("app.py")
+
+        if st.button("🔄 Reset analysis", use_container_width=True, key="sb_reset"):
+            _clear_all_state()
+            st.session_state["show_landing"] = True
+            st.switch_page("app.py")
 
         st.markdown('<div class="ft-divider"></div>', unsafe_allow_html=True)
         st.markdown(
