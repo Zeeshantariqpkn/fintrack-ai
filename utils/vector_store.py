@@ -1,8 +1,5 @@
 """
 Lightweight in-memory vector store for FinTrack AI.
-
-Embeddings come from Hugging Face (optional) or a deterministic hash fallback.
-The LLM itself is provided by Groq — HF is only used for embeddings here.
 """
 from __future__ import annotations
 
@@ -24,9 +21,6 @@ DEFAULT_EMBED_DIM = 384
 HF_FEATURE_URL = "https://api-inference.huggingface.co/pipeline/feature-extraction/{model}"
 
 
-# ---------------------------------------------------------------------
-# HF token (only for embeddings)
-# ---------------------------------------------------------------------
 def _get_hf_token() -> str:
     tok = os.environ.get("HF_TOKEN", "")
     if tok:
@@ -45,9 +39,6 @@ def _hf_available() -> bool:
     return bool(_get_hf_token()) and requests is not None
 
 
-# ---------------------------------------------------------------------
-# Embedding providers
-# ---------------------------------------------------------------------
 def _hash_embed(text: str, dim: int = DEFAULT_EMBED_DIM) -> np.ndarray:
     vec = np.zeros(dim, dtype=np.float32)
     tokens = str(text).lower().split()
@@ -98,9 +89,6 @@ def embed_texts(
     return mat, "hash-fallback"
 
 
-# ---------------------------------------------------------------------
-# The vector store
-# ---------------------------------------------------------------------
 class VectorStore:
     def __init__(self) -> None:
         self.documents: List[Dict[str, Any]] = []
@@ -160,12 +148,8 @@ class VectorStore:
         }
 
 
-# ---------------------------------------------------------------------
-# Session-state wrapper
-# ---------------------------------------------------------------------
 def get_vector_store() -> VectorStore:
     import streamlit as st
-
     if "vector_store" not in st.session_state:
         st.session_state.vector_store = VectorStore()
     return st.session_state.vector_store
@@ -173,14 +157,10 @@ def get_vector_store() -> VectorStore:
 
 def reset_vector_store() -> VectorStore:
     import streamlit as st
-
     st.session_state.vector_store = VectorStore()
     return st.session_state.vector_store
 
 
-# ---------------------------------------------------------------------
-# Build documents from the financial state
-# ---------------------------------------------------------------------
 def build_documents_from_state(state: Any) -> List[Dict[str, Any]]:
     docs: List[Dict[str, Any]] = []
 
